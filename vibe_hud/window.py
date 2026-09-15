@@ -2,12 +2,34 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 import webview
 
 from vibe_hud.hooks import HooksManager
 from vibe_hud.server import HudServer
+
+SCALE_FACTORS = {"small": 0.88, "medium": 1.0, "large": 1.15}
+DISMISS_SWEEP_INTERVAL_SEC = 5
+
+if sys.platform == "darwin":
+    from AppKit import NSObject
+
+    class _TrayActions(NSObject):
+        """Target for the menu bar status item — the fallback recovery path
+        when the floating HUD window itself becomes unreachable."""
+
+        def showWindow_(self, sender):
+            self.app.bring_to_front()
+
+        def centerWindow_(self, sender):
+            self.app.center_window()
+
+        def quitApp_(self, sender):
+            self.app.quit_app()
+else:
+    _TrayActions = None
 
 
 class VibeHudApi:
@@ -23,6 +45,12 @@ class VibeHudApi:
 
     def set_scale(self, scale: str):
         self.controller.set_scale(scale)
+
+    def set_always_on_top(self, value: bool):
+        self.controller.set_always_on_top(value)
+
+    def quit_app(self):
+        self.controller.quit_app()
 
     def install_hooks(self):
         return self.hooks_mgr.install()
@@ -52,6 +80,7 @@ class VibeHudApp:
         self.api = VibeHudApi(self)
         self.server = None
         self.sessions = {}
+        self._sessions_lock = threading.Lock()
         self.ui_dir = Path(__file__).parent / "ui"
         self.config_dir = Path.home() / ".vibe-hud"
         self.settings_file = self.config_dir / "settings.json"
@@ -65,11 +94,10 @@ class VibeHudApp:
 
         index_html = self.ui_dir / "index.html"
         orientation = self.settings.get("orientation", "horizontal")
+        w, h = self._collapsed_size(orientation)
 
-        if orientation == "vertical":
-            w, h = 68, 260
-        else:
-            w, h = 300, 68
+        self._dismiss_thread = threading.Thread(target=self._dismiss_sweep_loop, daemon=True)
+        self._dismiss_thread.start()
 
         self.window = webview.create_window(
             "Vibe HUD",
@@ -80,9 +108,18 @@ class VibeHudApp:
             x=600,
             y=40,
             frameless=True,
-            on_top=True,
+            # Reverted to pywebview's own on_top (NSStatusWindowLevel on macOS).
+            # A prior attempt to avoid that level (NSFloatingWindowLevel instead,
+            # to dodge a background-dimming side effect) broke "stays on top" —
+            # the window disappeared entirely on losing focus, and the dimming
+            # persisted anyway, so it was a straight regression. Reverting.
+            on_top=self.settings.get("alwaysOnTop", True),
             transparent=True,
-            resizable=True,
+            # Every layout (collapsed/expanded x horizontal/vertical x scale) is a
+            # specific, hand-fit CSS box. Free-form OS-level resizing has no
+            # sensible in-between state, so size is only ever changed by us
+            # (orientation/expand/scale in Settings), never by dragging an edge.
+            resizable=False,
             easy_drag=True,
         )
 
@@ -93,24 +130,93 @@ class VibeHudApp:
             if sys.platform == "darwin":
                 from AppKit import (
                     NSApp,
-                    NSFloatingWindowLevel,
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
-                    NSWindowCollectionBehaviorFullScreenAuxiliary,
                 )
                 NSApp.setActivationPolicy_(1)
 
                 for win in NSApp.windows():
-                    win.setLevel_(NSFloatingWindowLevel)
                     behavior = win.collectionBehavior()
+                    # NOT NSWindowCollectionBehaviorFullScreenAuxiliary: that flag
+                    # marks the window as a system-overlay-class panel (the same
+                    # class Control Center/Spotlight use over full-screen apps),
+                    # which macOS pairs with a background-dimming treatment even
+                    # outside an actual full-screen space. CanJoinAllSpaces alone
+                    # is enough to float across your normal desktop spaces.
                     win.setCollectionBehavior_(
-                        behavior | NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary
+                        behavior | NSWindowCollectionBehaviorCanJoinAllSpaces
                     )
         except Exception as e:
             print(f"[vibe-hud] Warning configuring window level: {e}")
 
+        if sys.platform == "darwin":
+            # on_loaded runs off the main thread (webview.start's func argument
+            # is invoked from a background thread), but NSStatusBar/NSMenu
+            # creation asserts it's on the main thread — dispatch it there.
+            from PyObjCTools import AppHelper
+            AppHelper.callAfter(self._setup_status_item)
+        else:
+            self._setup_status_item()
+
         settings = self.load_settings()
         if self.window:
             self.window.evaluate_js(f"if (window.applySettings) window.applySettings({json.dumps(settings)})")
+
+    def _setup_status_item(self):
+        # Fallback recovery path: whatever the cause of the HUD becoming
+        # unreachable (hidden behind another window, dragged off-screen,
+        # etc.), this menu bar item can always bring it back or quit the app,
+        # independent of the floating window's own state.
+        if sys.platform != "darwin":
+            return
+        try:
+            from AppKit import NSStatusBar, NSVariableStatusItemLength, NSMenu, NSMenuItem
+
+            self._status_item = NSStatusBar.systemStatusBar().statusItemWithLength_(
+                NSVariableStatusItemLength
+            )
+            self._status_item.button().setTitle_("\U0001F6A6")  # 🚦
+
+            self._tray_actions = _TrayActions.alloc().init()
+            self._tray_actions.app = self
+
+            menu = NSMenu.alloc().init()
+
+            show_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                "Show / Bring to Front", "showWindow:", ""
+            )
+            show_item.setTarget_(self._tray_actions)
+            menu.addItem_(show_item)
+
+            center_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                "Center on Screen", "centerWindow:", ""
+            )
+            center_item.setTarget_(self._tray_actions)
+            menu.addItem_(center_item)
+
+            menu.addItem_(NSMenuItem.separatorItem())
+
+            quit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                "Quit Vibe HUD", "quitApp:", ""
+            )
+            quit_item.setTarget_(self._tray_actions)
+            menu.addItem_(quit_item)
+
+            self._status_menu = menu
+            self._status_item.setMenu_(menu)
+        except Exception as e:
+            print(f"[vibe-hud] Warning setting up status item: {e}")
+
+    def bring_to_front(self):
+        if not self.window:
+            return
+        try:
+            # Re-assert on_top in case it was somehow lost, then force to front.
+            self.window.on_top = self.settings.get("alwaysOnTop", True)
+            from AppKit import NSApp
+            for win in NSApp.windows():
+                win.orderFrontRegardless()
+        except Exception as e:
+            print(f"[vibe-hud] Warning bringing window to front: {e}")
 
     def set_orientation(self, orientation: str):
         self.settings["orientation"] = orientation
@@ -120,6 +226,35 @@ class VibeHudApp:
     def set_scale(self, scale: str):
         self.settings["scale"] = scale
         self.save_settings(self.settings)
+        self.resize_window(self.is_expanded)
+
+    def set_always_on_top(self, value: bool):
+        self.settings["alwaysOnTop"] = value
+        self.save_settings(self.settings)
+        if self.window:
+            self.window.on_top = value
+
+    def quit_app(self):
+        if self.server:
+            self.server.stop()
+        os._exit(0)
+
+    def _collapsed_size(self, orientation: str):
+        # Must match the body / body[data-orientation="vertical"] base sizes
+        # in ui/style.css.
+        base = (68, 260) if orientation == "vertical" else (336, 100)
+        return self._scaled(base)
+
+    def _expanded_size(self, orientation: str):
+        # Must match the body[data-orientation="vertical"][data-expanded="true"]
+        # and body[data-expanded="true"] base sizes in ui/style.css.
+        base = (396, 420) if orientation == "vertical" else (420, 440)
+        return self._scaled(base)
+
+    def _scaled(self, size):
+        factor = SCALE_FACTORS.get(self.settings.get("scale", "medium"), 1.0)
+        w, h = size
+        return int(w * factor), int(h * factor)
 
     def resize_window(self, expanded: bool, orientation: str = None):
         self.is_expanded = expanded
@@ -127,20 +262,31 @@ class VibeHudApp:
             return
 
         orient = orientation or self.settings.get("orientation", "horizontal")
-        if orient == "vertical":
-            if expanded:
-                self.window.resize(360, 420)
-            else:
-                self.window.resize(68, 260)
-        else:
-            if expanded:
-                self.window.resize(400, 440)
-            else:
-                self.window.resize(300, 68)
+        w, h = self._expanded_size(orient) if expanded else self._collapsed_size(orient)
+        self.window.resize(w, h)
 
     def center_window(self):
         if self.window:
             self.window.move(600, 40)
+
+    def _dismiss_sweep_loop(self):
+        while True:
+            time.sleep(DISMISS_SWEEP_INTERVAL_SEC)
+            auto_dismiss_sec = self.settings.get("autoDismissSec", 60)
+            if not auto_dismiss_sec:
+                continue
+            now = int(time.time() * 1000)
+            with self._sessions_lock:
+                expired = [
+                    sid for sid, s in self.sessions.items()
+                    if s["status"] == "complete"
+                    and s.get("completed_at")
+                    and (now - s["completed_at"]) > auto_dismiss_sec * 1000
+                ]
+                for sid in expired:
+                    del self.sessions[sid]
+            if expired:
+                self.broadcast_state()
 
     def load_settings(self) -> dict:
         default_settings = {
@@ -151,7 +297,8 @@ class VibeHudApp:
             "soundStyle": "marimba",
             "soundVolume": 0.8,
             "autoDismissSec": 60,
-            "alwaysOnTop": True
+            "alwaysOnTop": True,
+            "colorblindMode": False
         }
         if self.settings_file.exists():
             try:
@@ -170,9 +317,11 @@ class VibeHudApp:
             print(f"[vibe-hud] Error saving settings: {e}")
 
     def dismiss_session(self, session_id: str):
-        if session_id in self.sessions:
+        with self._sessions_lock:
+            if session_id not in self.sessions:
+                return
             del self.sessions[session_id]
-            self.broadcast_state()
+        self.broadcast_state()
 
     def focus_session(self, session_id: str):
         s = self.sessions.get(session_id)
@@ -228,34 +377,40 @@ class VibeHudApp:
 
         now = int(time.time() * 1000)
 
-        if session_id not in self.sessions:
-            self.sessions[session_id] = {
-                "id": session_id,
-                "cwd": cwd,
-                "repo_name": repo_name,
-                "app_pid": payload.get("app_pid"),
-                "app_name": payload.get("app_name"),
-                "term_program": payload.get("term_program"),
-                "status": "idle",
-                "title": "Ready",
-                "detail": "",
-                "tool_name": None,
-                "prompt": None,
-                "started_at": None,
-                "completed_at": None,
-                "duration": None,
-                "last_updated": now,
-            }
+        with self._sessions_lock:
+            if session_id not in self.sessions:
+                self.sessions[session_id] = {
+                    "id": session_id,
+                    "cwd": cwd,
+                    "repo_name": repo_name,
+                    "app_pid": payload.get("app_pid"),
+                    "app_name": payload.get("app_name"),
+                    "term_program": payload.get("term_program"),
+                    "status": "idle",
+                    "title": "Ready",
+                    "detail": "",
+                    "tool_name": None,
+                    "prompt": None,
+                    "started_at": None,
+                    "completed_at": None,
+                    "duration": None,
+                    "last_updated": now,
+                }
 
-        s = self.sessions[session_id]
-        s["cwd"] = cwd or s["cwd"]
-        s["repo_name"] = repo_name or s["repo_name"]
-        if payload.get("app_pid"):
-            s["app_pid"] = payload["app_pid"]
-        if payload.get("app_name"):
-            s["app_name"] = payload["app_name"]
-        s["last_updated"] = now
+            s = self.sessions[session_id]
+            s["cwd"] = cwd or s["cwd"]
+            s["repo_name"] = repo_name or s["repo_name"]
+            if payload.get("app_pid"):
+                s["app_pid"] = payload["app_pid"]
+            if payload.get("app_name"):
+                s["app_name"] = payload["app_name"]
+            s["last_updated"] = now
 
+            self._apply_event(s, event_name, explicit_status, payload, now, repo_name)
+
+        self.broadcast_state()
+
+    def _apply_event(self, s, event_name, explicit_status, payload, now, repo_name):
         if explicit_status:
             status = explicit_status
             if status == "working" and s["status"] != "working":
@@ -293,12 +448,11 @@ class VibeHudApp:
             s["completed_at"] = now
             s["duration"] = int((now - s["started_at"]) / 1000) if s.get("started_at") else None
             s["title"] = f"{repo_name}: Turn Complete"
-            s["detail"] = f"Finished in {s["duration"]}s" if s.get("duration") else "Finished turn"
+            duration = s["duration"]
+            s["detail"] = f"Finished in {duration}s" if duration else "Finished turn"
         elif event_name == "sessionstart":
             s["status"] = "idle"
             s["title"] = f"{repo_name}: Ready"
-
-        self.broadcast_state()
 
     def simulate_scenario(self, scenario: str):
         now = int(time.time() * 1000)

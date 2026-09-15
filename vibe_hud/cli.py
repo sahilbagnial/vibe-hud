@@ -44,11 +44,25 @@ def detect_terminal_info():
     }
 
 
+DEFAULT_PORT = 28790
+
+
+def _resolve_port() -> int:
+    """The running app writes its actual bound port here (it may not be
+    DEFAULT_PORT if that port was already taken by another instance)."""
+    port_file = Path.home() / ".vibe-hud" / "port"
+    try:
+        return int(port_file.read_text(encoding="utf-8").strip())
+    except Exception:
+        return DEFAULT_PORT
+
+
 def send_event(payload: dict) -> bool:
+    port = _resolve_port()
     try:
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
-            "http://127.0.0.1:28790/event",
+            f"http://127.0.0.1:{port}/event",
             data=data,
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -120,18 +134,22 @@ def main():
 
     if args.command == "install":
         res = mgr.install()
+        message = res["message"]
         if res["success"]:
-            print(f"✅ {res["message"]}")
-            if res.get("backup"):
-                print(f"📦 Backup created at: {res["backup"]}")
+            print(f"✅ {message}")
+            backup = res.get("backup")
+            if backup:
+                print(f"📦 Backup created at: {backup}")
         else:
-            print(f"❌ {res["message"]}")
+            print(f"❌ {message}")
     elif args.command == "remove":
         res = mgr.remove()
-        print(f"✅ {res["message"]}" if res["success"] else f"❌ {res["message"]}")
+        icon = "✅" if res["success"] else "❌"
+        print(f"{icon} {res['message']}")
     elif args.command == "status":
         configured = mgr.is_configured()
-        print(f"[vibe-hud] Hooks status: {"Configured ✅" if configured else "Not configured ❌"}")
+        status_text = "Configured ✅" if configured else "Not configured ❌"
+        print(f"[vibe-hud] Hooks status: {status_text}")
         print(f"[vibe-hud] Settings path: {mgr.settings_path}")
     elif args.command == "hook":
         hook()

@@ -18,11 +18,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const rngVolume = document.getElementById("rngVolume");
   const btnTestSound = document.getElementById("btnTestSound");
   const selAutoDismiss = document.getElementById("selAutoDismiss");
+  const chkAlwaysOnTop = document.getElementById("chkAlwaysOnTop");
+  const chkColorblind = document.getElementById("chkColorblind");
 
   // Action elements
   const btnHooks = document.getElementById("btnHooks");
   const btnCenter = document.getElementById("btnCenter");
   const btnSimMulti = document.getElementById("btnSimMulti");
+  const btnQuit = document.getElementById("btnQuit");
 
   let isExpanded = false;
   let timerInterval = null;
@@ -41,6 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
     soundVolume: 0.8,
     autoDismissSec: 60,
     alwaysOnTop: true,
+    colorblindMode: false,
   };
 
   function formatTime(seconds) {
@@ -75,6 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.setAttribute("data-theme", settings.theme || "dark-glass");
     document.body.setAttribute("data-orientation", settings.orientation || "horizontal");
     document.body.setAttribute("data-scale", settings.scale || "medium");
+    document.body.setAttribute("data-colorblind", settings.colorblindMode ? "true" : "false");
 
     if (selTheme) selTheme.value = settings.theme || "dark-glass";
     if (selOrientation) selOrientation.value = settings.orientation || "horizontal";
@@ -83,6 +88,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (selSoundStyle) selSoundStyle.value = settings.soundStyle || "marimba";
     if (rngVolume) rngVolume.value = settings.soundVolume !== undefined ? settings.soundVolume : 0.8;
     if (selAutoDismiss) selAutoDismiss.value = String(settings.autoDismissSec || 60);
+    if (chkAlwaysOnTop) chkAlwaysOnTop.checked = settings.alwaysOnTop !== false;
+    if (chkColorblind) chkColorblind.checked = !!settings.colorblindMode;
 
     window.hudAudio?.configure({
       enabled: settings.soundEnabled,
@@ -147,57 +154,87 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   function renderOrbCluster(sessions) {
-    orbCluster.innerHTML = "";
     if (sessionCount) sessionCount.textContent = sessions ? sessions.length : 0;
 
     if (!sessions || sessions.length === 0) {
-      const emptyOrb = document.createElement("div");
-      emptyOrb.className = "orb-item";
-      emptyOrb.setAttribute("data-status", "idle");
-      emptyOrb.innerHTML = `
-        <div class="orb-ring"></div>
-        <div class="orb-dot"></div>
-        <div class="orb-tooltip">📁 Standing by for Claude</div>
-      `;
-      orbCluster.appendChild(emptyOrb);
+      // Rebuilding DOM nodes on every update (as this used to do for every
+      // session, always) breaks CSS :hover — a freshly created element under
+      // a stationary cursor does NOT retroactively receive :hover until the
+      // mouse moves again, so a tooltip hovered during active work (frequent
+      // re-renders) would never appear. Reuse the placeholder node instead.
+      let emptyOrb = orbCluster.querySelector('.orb-item[data-session-key="__empty__"]');
+      if (!emptyOrb || orbCluster.children.length !== 1) {
+        orbCluster.innerHTML = "";
+        emptyOrb = document.createElement("div");
+        emptyOrb.className = "orb-item";
+        emptyOrb.setAttribute("data-session-key", "__empty__");
+        emptyOrb.setAttribute("data-status", "idle");
+        emptyOrb.innerHTML = `
+          <div class="orb-ring"></div>
+          <div class="orb-dot"></div>
+          <div class="orb-tooltip">📁 Standing by for Claude</div>
+        `;
+        orbCluster.appendChild(emptyOrb);
+      }
       return;
     }
 
+    const existing = new Map();
+    orbCluster.querySelectorAll(".orb-item").forEach((el) => {
+      existing.set(el.getAttribute("data-session-key"), el);
+    });
+
     sessions.forEach((s) => {
-      const orb = document.createElement("div");
-      orb.className = "orb-item";
-      orb.setAttribute("data-status", s.status);
+      let orb = existing.get(s.id);
+
+      if (!orb) {
+        orb = document.createElement("div");
+        orb.className = "orb-item";
+        orb.setAttribute("data-session-key", s.id);
+        orb.innerHTML = `
+          <div class="orb-ring"></div>
+          <div class="orb-dot"></div>
+          <div class="orb-tooltip"></div>
+        `;
+
+        // Hover feedback: preview in pill title/subtitle. Reads current
+        // data-* attributes at hover time rather than closing over `s`, since
+        // this same node gets its data updated in place on later renders.
+        orb.addEventListener("mouseenter", () => {
+          pillTitle.textContent = `📁 ${orb.dataset.repoName} (${orb.dataset.status.toUpperCase()})`;
+          pillSubtitle.textContent = orb.dataset.hoverDetail || "Click dot to jump to terminal";
+        });
+
+        orb.addEventListener("mouseleave", () => {
+          pillTitle.textContent = defaultHeadlineTitle;
+          pillSubtitle.textContent = defaultHeadlineSubtitle;
+        });
+
+        // Click to focus terminal!
+        orb.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (window.pywebview && window.pywebview.api) {
+            window.pywebview.api.focus_session(orb.dataset.sessionKey);
+          }
+        });
+      } else {
+        existing.delete(s.id);
+      }
 
       const shortId = s.id ? s.id.slice(0, 7) : "";
-      const tooltipText = `📁 ${s.repo_name} (${shortId ? "#" + shortId : s.status}) · Click to jump`;
+      orb.setAttribute("data-status", s.status);
+      orb.dataset.sessionKey = s.id;
+      orb.dataset.repoName = s.repo_name;
+      orb.dataset.status = s.status;
+      orb.dataset.hoverDetail = s.prompt || s.detail || "";
+      orb.querySelector(".orb-tooltip").textContent =
+        `📁 ${s.repo_name} (${shortId ? "#" + shortId : s.status}) · Click to jump`;
 
-      orb.innerHTML = `
-        <div class="orb-ring"></div>
-        <div class="orb-dot"></div>
-        <div class="orb-tooltip">${escapeHtml(tooltipText)}</div>
-      `;
-
-      // Hover feedback: preview in pill title/subtitle
-      orb.addEventListener("mouseenter", () => {
-        pillTitle.textContent = `📁 ${s.repo_name} (${s.status.toUpperCase()})`;
-        pillSubtitle.textContent = s.prompt || s.detail || "Click dot to jump to terminal";
-      });
-
-      orb.addEventListener("mouseleave", () => {
-        pillTitle.textContent = defaultHeadlineTitle;
-        pillSubtitle.textContent = defaultHeadlineSubtitle;
-      });
-
-      // Click to focus terminal!
-      orb.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (window.pywebview && window.pywebview.api) {
-          window.pywebview.api.focus_session(s.id);
-        }
-      });
-
-      orbCluster.appendChild(orb);
+      orbCluster.appendChild(orb); // moves into place if already present — no recreation
     });
+
+    // Anything left in `existing` belongs to a session that's gone now.
+    existing.forEach((el) => el.remove());
   }
 
   function renderSessionList(sessions) {
@@ -268,7 +305,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function escapeHtml(str) {
     if (!str) return "";
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   // Expansion
@@ -276,6 +318,7 @@ document.addEventListener("DOMContentLoaded", () => {
     e.stopPropagation();
     isExpanded = !isExpanded;
     container.classList.toggle("expanded", isExpanded);
+    document.body.setAttribute("data-expanded", isExpanded ? "true" : "false");
     if (window.pywebview && window.pywebview.api) {
       window.pywebview.api.set_expanded(isExpanded, settings.orientation);
     }
@@ -347,6 +390,20 @@ document.addEventListener("DOMContentLoaded", () => {
     persistSettings();
   });
 
+  chkAlwaysOnTop?.addEventListener("change", () => {
+    settings.alwaysOnTop = chkAlwaysOnTop.checked;
+    persistSettings();
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.set_always_on_top(settings.alwaysOnTop);
+    }
+  });
+
+  chkColorblind?.addEventListener("change", () => {
+    settings.colorblindMode = chkColorblind.checked;
+    document.body.setAttribute("data-colorblind", settings.colorblindMode ? "true" : "false");
+    persistSettings();
+  });
+
   // Actions
   btnHooks?.addEventListener("click", async () => {
     btnHooks.innerHTML = "<span>Installing...</span>";
@@ -371,6 +428,12 @@ document.addEventListener("DOMContentLoaded", () => {
   btnSimMulti?.addEventListener("click", () => {
     if (window.pywebview && window.pywebview.api) {
       window.pywebview.api.simulate("multi");
+    }
+  });
+
+  btnQuit?.addEventListener("click", () => {
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.quit_app();
     }
   });
 

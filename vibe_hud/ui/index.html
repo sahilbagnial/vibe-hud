@@ -6,7 +6,7 @@
   <title>Vibe HUD</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body data-theme="dark-glass" data-orientation="horizontal" data-scale="medium">
+<body data-theme="dark-glass" data-orientation="horizontal" data-scale="medium" data-expanded="false">
   <div id="hudContainer" class="hud-container" data-status="idle">
     <!-- Main Capsule Pill (NO native title attribute!) -->
     <div id="hudPill" class="hud-pill pywebview-drag-region">
@@ -87,6 +87,10 @@
               <option value="light-glass">❄️ Frosted Light</option>
             </select>
           </div>
+          <div class="settings-row">
+            <span>Colorblind-Friendly Colors</span>
+            <input type="checkbox" id="chkColorblind">
+          </div>
         </div>
 
         <div class="settings-group">
@@ -124,6 +128,10 @@
               <option value="0">Keep until dismissed</option>
             </select>
           </div>
+          <div class="settings-row">
+            <span>Always On Top</span>
+            <input type="checkbox" id="chkAlwaysOnTop" checked>
+          </div>
         </div>
       </div>
 
@@ -135,6 +143,12 @@
           </button>
           <button id="btnCenter" class="hud-btn">
             <span>🎯 Center HUD</span>
+          </button>
+        </div>
+
+        <div class="settings-group" style="margin-top: 6px;">
+          <button id="btnQuit" class="hud-btn" style="background: rgba(244, 63, 94, 0.15); border-color: rgba(244, 63, 94, 0.35); color: #fb7185;">
+            ✖ Quit Vibe HUD
           </button>
         </div>
 

@@ -93,6 +93,15 @@ vibe-hud hook (reads stdin JSON)
 
 ---
 
+## 🗺️ Roadmap
+
+Ideas being considered for the next round of work — PRs against any of these are very welcome:
+
+- **Menu bar tray + native alerts**: a proper macOS menu-bar icon (show/hide/quit) plus a native OS notification when a session needs attention or finishes, so you're alerted even when the HUD is hidden behind another window.
+- **Multi-agent adapters**: generalize the hook payload/CLI so Cursor, Aider, Codex, or OpenCode can push events too, so this stops being Claude-only and becomes the "universal" agent HUD the name promises.
+- **Cross-platform parity**: always-on-top window pinning and click-to-focus currently rely on macOS-only AppKit calls; Windows/Linux equivalents are needed for real cross-platform support.
+- **Session history + stale detection**: a History tab showing past turns per repo, and a visual flag when a session has been "working" with no event for an unusually long time (crashed hook, closed terminal, etc.).
+
 ## 🤝 Contributing
 
 PRs and agent integrations (Cursor, Aider, Codex, Ollama) are welcome!

@@ -58,7 +58,7 @@ class HooksManager:
                 ]
             }
 
-            events = ["UserPromptSubmit", "PreToolUse", "Notification", "Stop"]
+            events = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionStart"]
             for ev in events:
                 if ev not in settings["hooks"] or not isinstance(settings["hooks"][ev], list):
                     settings["hooks"][ev] = []
@@ -93,7 +93,7 @@ class HooksManager:
         try:
             settings = json.loads(self.settings_path.read_text(encoding="utf-8"))
             hooks = settings.get("hooks", {})
-            events = ["UserPromptSubmit", "PreToolUse", "Notification", "Stop"]
+            events = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionStart"]
             for ev in events:
                 if ev in hooks and isinstance(hooks[ev], list):
                     hooks[ev] = [

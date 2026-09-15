@@ -57,6 +57,16 @@ body[data-theme="light-glass"] {
   --accent-primary: #2563eb;
 }
 
+/* Colorblind-friendly palette: red-green color blindness (deuteranopia/
+   protanopia) is the common case, and the one collision that matters here is
+   working (red) vs. complete (green) — they can look the same. Swapping
+   "complete" to blue keeps all three states distinct regardless of theme.
+   Comes after the theme blocks so it wins the cascade over any of them. */
+body[data-colorblind="true"] {
+  --color-complete: #3b82f6;
+  --glow-complete: rgba(59, 130, 246, 0.8);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -67,8 +77,18 @@ body[data-theme="light-glass"] {
 }
 
 body {
-  width: 100vw;
-  height: 100vh;
+  /* Fixed, unscaled base size per state — the ONLY scaling happens via the
+     transform below. Python resizes the real OS window to base-size * scale,
+     so this must stay in sync with VibeHudApp._collapsed_size/_expanded_size. */
+  width: 336px;
+  /* Taller than the 50px pill itself needs: the orb tooltip pops down below
+     the pill, and since this is a *native window* (not a browser tab), CSS
+     overflow:visible only lets it paint past the pill's own box — it still
+     gets hard-clipped at the actual window edge. The window is invisible
+     below the pill until something needs that space, so this costs nothing
+     visually; resize() keeps the top-left corner fixed, so the pill itself
+     doesn't move when this grows. */
+  height: 100px;
   overflow: visible;
   background: transparent;
   display: flex;
@@ -77,7 +97,26 @@ body {
   justify-content: flex-start;
   padding: 6px;
   transform: scale(var(--ui-scale));
-  transform-origin: top center;
+  transform-origin: top left;
+}
+
+body[data-expanded="true"] {
+  width: 420px;
+  height: 440px;
+}
+
+body[data-orientation="vertical"] {
+  width: 68px;
+  height: 260px;
+  /* The vertical panel sits beside the pill via an explicit left offset
+     (see .hud-panel below), not centered — so the pill itself must stay
+     pinned to the left edge instead of centering into the panel's space. */
+  align-items: flex-start;
+}
+
+body[data-orientation="vertical"][data-expanded="true"] {
+  width: 396px;
+  height: 420px;
 }
 
 .hud-container {
@@ -86,6 +125,12 @@ body {
   flex-direction: column;
   align-items: center;
   position: relative;
+}
+
+body[data-orientation="vertical"] .hud-container {
+  /* Keep the pill pinned left so the absolutely-positioned side panel
+     (left: 64px) sits beside it instead of centering on top of it. */
+  align-items: flex-start;
 }
 
 /* Main Horizontal Pill */
@@ -210,8 +255,15 @@ body {
 .orb-tooltip {
   position: absolute;
   top: 26px;
-  left: 50%;
-  transform: translateX(-50%);
+  /* Anchored to the orb's left edge, expanding rightward — not centered.
+     Centering (left:50%; translateX(-50%)) put half the tooltip's width to
+     the left of the orb, and for the first orb in the cluster (close to the
+     pill's own left edge) that pushed it past the window's left boundary,
+     where it got hard-clipped by the native window frame (same class of bug
+     as the vertical-clipping fix above, just on the other axis). Expanding
+     in one fixed direction means only one edge of the window needs enough
+     room, and the pill is wide enough now to give the right edge that room. */
+  left: -4px;
   background: rgba(10, 10, 14, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 7px;
@@ -220,6 +272,9 @@ body {
   font-weight: 500;
   color: #fff;
   white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
@@ -231,7 +286,7 @@ body {
 .orb-item:hover .orb-tooltip {
   opacity: 1;
   visibility: visible;
-  transform: translateX(-50%) translateY(4px);
+  transform: translateY(4px);
 }
 
 /* Title & Subtitle */
@@ -280,6 +335,13 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-secondary);
   display: none;
+  /* A long tool/hook name (e.g. "SubagentHandback") would otherwise grow
+     unbounded and push .pill-right wider, squeezing the title down to
+     nothing since .pill-right never shrinks. */
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tool-badge.visible {

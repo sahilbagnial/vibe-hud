@@ -6,7 +6,8 @@ authors = [
     {name = "sahilbagnial", email = "sahilbagnial@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.14"
+license = "MIT"
+requires-python = ">=3.10"
 dependencies = [
     "pywebview (>=6.2.1,<7.0.0)"
 ]

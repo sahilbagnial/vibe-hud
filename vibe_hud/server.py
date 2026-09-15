@@ -1,6 +1,7 @@
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from typing import Callable, Optional
 
 
@@ -10,13 +11,6 @@ class HudRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         # Suppress noisy HTTP request logging
         pass
-
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
 
     def do_GET(self):
         if self.path == "/status":
@@ -72,7 +66,18 @@ class HudServer:
 
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
+        self._write_port_file()
         print(f"[vibe-hud] Local server running on http://127.0.0.1:{self.port}")
+
+    def _write_port_file(self):
+        # Lets the CLI hook find the real port when the default one is taken
+        # by another running instance.
+        try:
+            port_dir = Path.home() / ".vibe-hud"
+            port_dir.mkdir(parents=True, exist_ok=True)
+            (port_dir / "port").write_text(str(self.port), encoding="utf-8")
+        except Exception:
+            pass
 
     def stop(self):
         if self.server:
