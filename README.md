@@ -1,4 +1,4 @@
-# 🚦 Vibe HUD — Universal AI Agent Status Overlay for macOS
+# 🚦 Vibe HUD — Universal AI Agent Status Overlay
 
 > **Real-time ambient status light for Claude Code, Cursor, Aider, Codex & more.**
 > (_Note: Currnetly only available for claude code,rest is work in progress_)
@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://python.org)
 [![Poetry](https://img.shields.io/badge/Poetry-Package%20Manager-60A5FA.svg?logo=poetry&logoColor=white)](https://python-poetry.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-macOS-000000.svg?logo=apple&logoColor=white)](https://apple.com/macos)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-000000.svg)](https://github.com/sahilbagnial/vibe-hud)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-orange.svg)](https://claude.ai/code)
 [![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-red.svg)](https://github.com/sahilbagnial/vibe-hud)
 
@@ -15,7 +15,9 @@
 
 ## 🤔 What is Vibe HUD?
 
-**Vibe HUD** is a floating, always-on-top glassmorphic overlay for macOS that gives you **instant, glanceable feedback** about what your AI coding agent is doing — without switching windows, tabbing back to the terminal, or breaking your flow.
+**Vibe HUD** is a floating, always-on-top glassmorphic overlay for macOS, Windows, and Linux that gives you **instant, glanceable feedback** about what your AI coding agent is doing — without switching windows, tabbing back to the terminal, or breaking your flow.
+
+macOS has full support, including a menu bar tray icon. Windows and Linux have the core status HUD and click-to-jump for IDE-integrated terminals (VS Code, Cursor, Windsurf, JetBrains, ...) with best-effort focus fallback for plain terminal apps — no tray icon on those platforms yet.
 
 - 🔴 **Agent is working** → Red pulsing light + elapsed timer
 - 🟢 **Agent finished** → Green flash + audio chime  
@@ -32,7 +34,7 @@ It plugs directly into [Claude Code](https://claude.ai/code) via lifecycle hooks
 - **🟡 Amber Breathing**: Alerts you the exact millisecond the agent asks for human confirmation or permission.
 - **🏝️ Floating Glassmorphic Pill**:
   - Transparent, frameless, and draggable anywhere across your screens.
-  - Stays on top across full-screen desktops, IDEs, and browsers on macOS.
+  - Stays on top across full-screen desktops, IDEs, and browsers on macOS (Windows/Linux: standard always-on-top).
   - Expandable card showing the active prompt, tool badge (`BASH`, `EDIT`), and quick controls.
 - **🎵 Procedural Audio Chimes**:
   - Synthesized Web Audio API sounds (pleasant marimba chord on completion, soft droplet on permission prompt).
@@ -120,9 +122,9 @@ vibe-hud hook (reads stdin JSON)
 
 Ideas being considered for the next round of work — PRs against any of these are very welcome:
 
-- **Menu bar tray + native alerts**: a proper macOS menu-bar icon (show/hide/quit) plus a native OS notification when a session needs attention or finishes, so you're alerted even when the HUD is hidden behind another window.
+- **Windows/Linux tray icon + native alerts**: macOS has a menu-bar icon (show/hide/quit) already; Windows/Linux need the same, plus a native OS notification when a session needs attention or finishes, so you're alerted even when the HUD is hidden behind another window.
 - **Multi-agent adapters**: generalize the hook payload/CLI so Cursor, Aider, Codex, or OpenCode can push events too, so this stops being Claude-only and becomes the "universal" agent HUD the name promises.
-- **Cross-platform parity**: always-on-top window pinning and click-to-focus currently rely on macOS-only AppKit calls; Windows/Linux equivalents are needed for real cross-platform support.
+- **Deeper Windows/Linux window pinning**: macOS pins the HUD across all desktop Spaces; Windows virtual desktops and Linux window managers don't have an equivalent yet, so the HUD only stays on top of the current desktop/workspace there.
 - **Session history + stale detection**: a History tab showing past turns per repo, and a visual flag when a session has been "working" with no event for an unusually long time (crashed hook, closed terminal, etc.).
 
 ---
