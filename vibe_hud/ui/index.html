@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vibe HUD</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="hudContainer" class="hud-container" data-status="idle">
+    <!-- Main Capsule Pill -->
+    <div id="hudPill" class="hud-pill pywebview-drag-region" title="Drag to reposition">
+      <div class="pill-left">
+        <div class="status-indicator">
+          <div class="status-ring"></div>
+          <div class="status-dot"></div>
+        </div>
+        <div class="pill-info">
+          <span id="pillTitle" class="pill-title">Vibe HUD Ready</span>
+          <span id="pillSubtitle" class="pill-subtitle">Waiting for Claude...</span>
+        </div>
+      </div>
+
+      <div class="pill-right">
+        <span id="toolBadge" class="tool-badge">BASH</span>
+        <span id="timerBadge" class="timer-badge">00:00</span>
+        <button id="expandBtn" class="expand-btn" title="Toggle Details">
+          <svg class="expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Expanded Drawer Panel -->
+    <div id="hudPanel" class="hud-panel">
+      <div class="panel-section">
+        <span class="section-label">Current Prompt / Task</span>
+        <div id="promptBox" class="prompt-box">No active task. Standing by for instructions.</div>
+      </div>
+
+      <div class="panel-section">
+        <span class="section-label">Quick Actions</span>
+        <div class="button-grid">
+          <button id="btnHooks" class="hud-btn primary">
+            <span>⚡ Install Hooks</span>
+          </button>
+          <button id="btnCenter" class="hud-btn">
+            <span>🎯 Center HUD</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <span class="section-label">Test States</span>
+        <div class="sim-row">
+          <button class="sim-dot-btn red" data-sim="working">🔴 Work</button>
+          <button class="sim-dot-btn yellow" data-sim="attention">🟡 Input</button>
+          <button class="sim-dot-btn green" data-sim="complete">🟢 Done</button>
+          <button class="sim-dot-btn" data-sim="idle">⚪ Reset</button>
+        </div>
+      </div>
+
+      <div class="panel-footer">
+        <label class="toggle-label">
+          <input type="checkbox" id="chkSound" checked>
+          <span>Audio Chimes</span>
+        </label>
+        <span style="color: var(--text-muted); font-size: 10px;">Python 3.14 · pywebview</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="audio.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+[project]
+name = "vibe-hud"
+version = "0.1.0"
+description = "Universal ambient status light for AI coding agents"
+authors = [
+    {name = "sahilbagnial", email = "sahilbagnial@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pywebview (>=6.2.1,<7.0.0)"
+]
+
+[project.scripts]
+vibe-hud = "vibe_hud.cli:main"
+vibe-hud-hook = "vibe_hud.cli:hook"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
