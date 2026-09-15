@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "pywebview (>=6.2.1,<7.0.0)",
     "psutil (>=6.0.0,<7.0.0)",
-    "pywin32 (>=306,<307) ; sys_platform == 'win32'"
+    "pywin32 (>=306) ; sys_platform == 'win32'"
 ]
 
 [project.scripts]

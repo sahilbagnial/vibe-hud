@@ -36,13 +36,18 @@ def _resolve_cli(session: dict):
 
 
 def _find_app_process(chain):
+    # No fallback to the topmost ancestor: that's near the root of the
+    # process tree (e.g. a system/session process), not necessarily the
+    # window-owning terminal/IDE — using it would hand xdotool/win32 a PID
+    # that doesn't own the window we actually want to focus. Better to
+    # report no app_pid than a wrong one.
     for p in chain:
         try:
             if p.name().lower() in KNOWN_APP_EXE_NAMES:
                 return p
         except Exception:
             continue
-    return chain[-1] if chain else None
+    return None
 
 
 class WindowsBackend(PlatformBackend):
@@ -80,6 +85,10 @@ class WindowsBackend(PlatformBackend):
         return {
             "term_program": env.get("TERM_PROGRAM", ""),
             "wt_session": env.get("WT_SESSION", ""),
+            # JetBrains bundles its own cross-platform terminal (JediTerm),
+            # so this is set the same way on Windows as macOS/Linux — needed
+            # by jump_via_ide_cli to pick JetBrains-compatible args (no -r).
+            "terminal_emulator": env.get("TERMINAL_EMULATOR", ""),
             "app_pid": app_pid,
             "app_name": app_name,
             "app_exe_name": app_exe_name,
