@@ -1,0 +1,78 @@
+# Vibe HUD
+
+> Universal ambient status light for AI coding agents on macOS.
+
+Vibe HUD is an open-source macOS desktop overlay (Python + pywebview) that
+shows real-time status of AI coding agents — Claude Code, Cursor, Aider,
+Codex, OpenCode — via a floating glassmorphic pill that stays on top of all
+windows. It eliminates the need to switch back to the terminal to check whether
+an AI agent is still working, has finished, or needs human input.
+
+## Core concept
+
+When an AI agent runs, the developer typically switches to another app and waits.
+Vibe HUD solves the "when do I look back?" problem by providing a persistent,
+peripheral visual (and audio) signal:
+
+- 🔴 Red pulsing  → agent is working (bash, edit, thinking)
+- 🟢 Green flash  → agent finished its turn
+- 🟡 Amber pulse  → agent is waiting for human input / permission
+
+## How it works
+
+Claude Code fires lifecycle hooks (PreToolUse, PostToolUse, Stop, etc.) defined
+in `~/.claude/settings.json`. The `vibe-hud-hook` binary is registered as the
+handler; it reads the JSON event from stdin and POSTs it to a local HTTP server
+(`http://127.0.0.1:28790/event`) running inside the Vibe HUD process. The HUD
+updates its overlay state in response. A file-based fallback
+(`~/.claude-hud/state.json`) is used when the server is not running.
+
+The overlay itself is a native macOS window (AppKit, via pywebview) rendered
+with WebKit. It is always-on-top, frameless, transparent, and draggable.
+
+## Repository layout
+
+```
+vibe_hud/           Python package
+  cli.py            Entry points: `vibe-hud` and `vibe-hud-hook` commands
+  server.py         Local HTTP server that receives hook events
+  ui/               HTML/CSS/JS for the overlay pill
+pyproject.toml      Package metadata and dependencies (Poetry)
+README.md           Full user-facing documentation
+AGENTS.md           Instructions for AI coding agents working on this repo
+CLAUDE.md           Claude Code–specific context and conventions
+```
+
+## Key dependencies
+
+- `pywebview >= 6.2.1` — native WebKit window on macOS
+- Python >= 3.10
+- Poetry for package management
+
+## Quick start (for LLM agents helping users)
+
+```bash
+git clone https://github.com/sahilbagnial/vibe-hud.git
+cd vibe-hud
+poetry install
+poetry run vibe-hud          # launch the overlay
+poetry run vibe-hud install  # register Claude Code hooks
+poetry run vibe-hud simulate # demo all states without Claude
+```
+
+## Roadmap highlights
+
+- Menu bar tray icon + native OS notifications
+- Adapters for Cursor, Aider, Codex, OpenCode (multi-agent)
+- Windows / Linux always-on-top parity
+- Session history and stale-session detection
+
+## License
+
+MIT — open source, contributions welcome.
+
+## Links
+
+- GitHub: https://github.com/sahilbagnial/vibe-hud
+- Inspired by: https://www.reddit.com/r/ClaudeCode/comments/1ue5inx/i_built_a_status_light_for_claude_code_do_you/
+- Related project: https://github.com/Octane0411/open-vibe-island

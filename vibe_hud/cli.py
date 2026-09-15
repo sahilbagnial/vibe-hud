@@ -15,7 +15,15 @@ def detect_terminal_info():
     env = os.environ
     term_program = env.get("TERM_PROGRAM", "")
     iterm_session = env.get("ITERM_SESSION_ID", "")
-    
+    # __CFBundleIdentifier is the only reliable way to tell VS Code-family IDEs
+    # apart: their integrated terminals all report app_name as "Electron" at
+    # the OS process level (see detect_terminal_info's ps walk below), and
+    # TERM_PROGRAM is just "vscode" for all of them (VS Code, Cursor,
+    # Windsurf, Antigravity, ...). JetBrains terminals are identified by
+    # TERMINAL_EMULATOR instead.
+    bundle_id = env.get("__CFBundleIdentifier", "")
+    terminal_emulator = env.get("TERMINAL_EMULATOR", "")
+
     app_pid = None
     app_name = None
     curr = os.getppid()
@@ -39,6 +47,8 @@ def detect_terminal_info():
     return {
         "term_program": term_program,
         "iterm_session": iterm_session,
+        "bundle_id": bundle_id,
+        "terminal_emulator": terminal_emulator,
         "app_pid": app_pid,
         "app_name": app_name,
     }

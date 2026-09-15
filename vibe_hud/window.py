@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -12,6 +13,41 @@ from vibe_hud.server import HudServer
 
 SCALE_FACTORS = {"small": 0.88, "medium": 1.0, "large": 1.15}
 DISMISS_SWEEP_INTERVAL_SEC = 5
+
+# Jump-to-window support for IDE-integrated terminals: activating the app
+# alone (NSRunningApplication) just restores whatever window that app last
+# had focused, which is wrong the moment more than one project window is
+# open. These CLIs support reopening a specific path in an *already open*
+# window that has it, which is what actually lands you on the right screen.
+# TERM_PROGRAM is "vscode" for every VS Code fork (Cursor, Windsurf,
+# Antigravity, ...) and app_name is useless for telling them apart (they all
+# report as "Electron" at the OS process level) — __CFBundleIdentifier is the
+# only reliable signal. Entries are best-effort for anything not personally
+# confirmed; shutil.which() gates actual use, so a wrong/missing guess just
+# falls back to plain app activation instead of failing.
+VSCODE_FAMILY_CLI_BY_BUNDLE_ID = {
+    "com.microsoft.VSCode": "code",
+    "com.microsoft.VSCodeInsiders": "code-insiders",
+    "com.todesktop.230313mzl4w4u92": "cursor",
+    "com.exafunction.windsurf": "windsurf",
+    "com.google.antigravity-ide": "antigravity-ide",
+}
+
+# JetBrains terminals identify themselves via TERMINAL_EMULATOR rather than
+# TERM_PROGRAM/bundle id, but the bundle id still says which product it is.
+JETBRAINS_CLI_BY_BUNDLE_ID = {
+    "com.jetbrains.intellij": "idea",
+    "com.jetbrains.intellij.ce": "idea",
+    "com.jetbrains.WebStorm": "webstorm",
+    "com.jetbrains.pycharm": "pycharm",
+    "com.jetbrains.PyCharm.ce": "pycharm",
+    "com.jetbrains.goland": "goland",
+    "com.jetbrains.CLion": "clion",
+    "com.jetbrains.rubymine": "rubymine",
+    "com.jetbrains.PhpStorm": "phpstorm",
+    "com.jetbrains.rider": "rider",
+    "com.jetbrains.RustRover": "rustrover",
+}
 
 if sys.platform == "darwin":
     from AppKit import NSObject
@@ -323,6 +359,38 @@ class VibeHudApp:
             del self.sessions[session_id]
         self.broadcast_state()
 
+    def _jump_via_ide_cli(self, s: dict) -> bool:
+        """Reopen the session's cwd via the IDE's own CLI (code -r, idea, etc.)
+        so an already-open window for that project gets focused directly,
+        instead of just activating the app and landing on whatever window it
+        last had up. Returns True if a jump was attempted."""
+        cwd = s.get("cwd")
+        if not cwd or not os.path.exists(cwd):
+            return False
+
+        bundle_id = s.get("bundle_id") or ""
+        term_program = (s.get("term_program") or "").lower()
+        terminal_emulator = s.get("terminal_emulator") or ""
+
+        cli = None
+        args = None
+        if terminal_emulator == "JetBrains-JediTerm":
+            cli = JETBRAINS_CLI_BY_BUNDLE_ID.get(bundle_id)
+            args = [cwd]
+        elif term_program == "vscode":
+            cli = VSCODE_FAMILY_CLI_BY_BUNDLE_ID.get(bundle_id)
+            args = ["-r", cwd]
+
+        if not cli or not shutil.which(cli):
+            return False
+
+        try:
+            subprocess.Popen([cli, *args])
+            return True
+        except Exception as e:
+            print(f"[vibe-hud] IDE CLI jump error ({cli}): {e}")
+            return False
+
     def focus_session(self, session_id: str):
         s = self.sessions.get(session_id)
         if not s:
@@ -334,6 +402,9 @@ class VibeHudApp:
         activated = False
 
         if sys.platform == "darwin":
+            if self._jump_via_ide_cli(s):
+                return
+
             if app_pid:
                 try:
                     from AppKit import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
@@ -386,6 +457,8 @@ class VibeHudApp:
                     "app_pid": payload.get("app_pid"),
                     "app_name": payload.get("app_name"),
                     "term_program": payload.get("term_program"),
+                    "bundle_id": payload.get("bundle_id"),
+                    "terminal_emulator": payload.get("terminal_emulator"),
                     "status": "idle",
                     "title": "Ready",
                     "detail": "",
@@ -404,6 +477,10 @@ class VibeHudApp:
                 s["app_pid"] = payload["app_pid"]
             if payload.get("app_name"):
                 s["app_name"] = payload["app_name"]
+            if payload.get("bundle_id"):
+                s["bundle_id"] = payload["bundle_id"]
+            if payload.get("terminal_emulator"):
+                s["terminal_emulator"] = payload["terminal_emulator"]
             s["last_updated"] = now
 
             self._apply_event(s, event_name, explicit_status, payload, now, repo_name)
