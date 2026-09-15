@@ -9,12 +9,20 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
-    "pywebview (>=6.2.1,<7.0.0)"
+    "pywebview (>=6.2.1,<7.0.0)",
+    "psutil (>=6.0.0,<7.0.0)",
+    "pywin32 (>=306,<307) ; sys_platform == 'win32'"
 ]
 
 [project.scripts]
 vibe-hud = "vibe_hud.cli:main"
 vibe-hud-hook = "vibe_hud.cli:hook"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
