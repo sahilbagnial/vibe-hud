@@ -1,7 +1,7 @@
 # 🚦 Vibe HUD — Universal AI Agent Status Overlay for macOS
 
 > **Real-time ambient status light for Claude Code, Cursor, Aider, Codex & more.**
-> _Note: Currnetly only available for claude code,rest is work in progress_
+> (_Note: Currnetly only available for claude code,rest is work in progress_)
 > Stop staring at the terminal. Know instantly when your AI is thinking, done, or needs you.
 
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://python.org)
