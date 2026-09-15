@@ -8,7 +8,7 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-from vibe_hud.hooks import HooksManager
+from vibe_hud.core.hooks import HooksManager
 
 
 def detect_terminal_info():
