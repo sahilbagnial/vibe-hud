@@ -6,14 +6,13 @@
   <title>Vibe HUD</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body data-theme="dark-glass">
+<body data-theme="dark-glass" data-orientation="horizontal" data-scale="medium">
   <div id="hudContainer" class="hud-container" data-status="idle">
-    <!-- Main Capsule Pill -->
-    <div id="hudPill" class="hud-pill pywebview-drag-region" title="Drag to reposition">
+    <!-- Main Capsule Pill (NO native title attribute!) -->
+    <div id="hudPill" class="hud-pill pywebview-drag-region">
       <div class="pill-left">
         <!-- Multi-Orb Traffic Light Cluster -->
         <div id="orbCluster" class="orb-cluster">
-          <!-- Dynamically populated orb dots with hover tooltips -->
           <div class="orb-item" data-status="idle">
             <div class="orb-ring"></div>
             <div class="orb-dot"></div>
@@ -30,7 +29,7 @@
       <div class="pill-right">
         <span id="toolBadge" class="tool-badge">BASH</span>
         <span id="timerBadge" class="timer-badge">00:00</span>
-        <button id="expandBtn" class="icon-btn" title="Toggle Multi-Session & Settings">
+        <button id="expandBtn" class="icon-btn" title="Toggle Sessions & Settings">
           <svg class="expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
@@ -59,7 +58,26 @@
       <!-- Tab 2: Settings Screen -->
       <div id="tabSettings" class="tab-content">
         <div class="settings-group">
-          <span class="settings-label">Appearance</span>
+          <span class="settings-label">Layout & Orientation</span>
+          <div class="settings-row">
+            <span>Orientation</span>
+            <select id="selOrientation" class="settings-select">
+              <option value="horizontal">Horizontal Pill (Default)</option>
+              <option value="vertical">Vertical Dock (Sidebar)</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <span>Size / Scale</span>
+            <select id="selScale" class="settings-select">
+              <option value="small">Small (Compact 88%)</option>
+              <option value="medium" selected>Medium (Default 100%)</option>
+              <option value="large">Large (Spacious 115%)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <span class="settings-label">Appearance & Themes</span>
           <div class="settings-row">
             <span>Theme</span>
             <select id="selTheme" class="settings-select">

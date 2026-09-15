@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.request
@@ -8,6 +9,39 @@ import urllib.error
 from pathlib import Path
 
 from vibe_hud.hooks import HooksManager
+
+
+def detect_terminal_info():
+    env = os.environ
+    term_program = env.get("TERM_PROGRAM", "")
+    iterm_session = env.get("ITERM_SESSION_ID", "")
+    
+    app_pid = None
+    app_name = None
+    curr = os.getppid()
+
+    while curr > 1:
+        try:
+            out = subprocess.check_output(["ps", "-p", str(curr), "-o", "ppid=,comm="]).decode().strip()
+            if not out:
+                break
+            parts = out.split(None, 1)
+            ppid = int(parts[0])
+            comm = parts[1] if len(parts) > 1 else ""
+            if ppid == 1:
+                app_pid = curr
+                app_name = Path(comm).name
+                break
+            curr = ppid
+        except Exception:
+            break
+
+    return {
+        "term_program": term_program,
+        "iterm_session": iterm_session,
+        "app_pid": app_pid,
+        "app_name": app_name,
+    }
 
 
 def send_event(payload: dict) -> bool:
@@ -57,6 +91,7 @@ def hook():
     if "cwd" not in payload:
         payload["cwd"] = os.getcwd()
 
+    payload.update(detect_terminal_info())
     payload["timestamp"] = int(time.time() * 1000)
     send_event(payload)
     sys.exit(0)
@@ -101,53 +136,70 @@ def main():
     elif args.command == "hook":
         hook()
     elif args.command == "simulate":
+        term_info = detect_terminal_info()
         if args.scenario == "multi":
             print("Running Multi-Session Simulation (3 Terminals):")
             print("➔ Terminal 1: data-platform (Prompt submitted)")
-            send_event({
+            p1 = {
                 "session_id": "sess_1_data",
                 "cwd": "/Users/sahilbagnial/Desktop/repo/data-platform",
                 "hook_event_name": "UserPromptSubmit",
                 "prompt": "Run database migrations and seed dev users",
-            })
+            }
+            p1.update(term_info)
+            send_event(p1)
             time.sleep(1.5)
 
             print("➔ Terminal 2: sight3-backend (Tool execution)")
-            send_event({
+            p2 = {
                 "session_id": "sess_2_backend",
                 "cwd": "/Users/sahilbagnial/Desktop/repo/sight3-backend",
                 "hook_event_name": "PreToolUse",
                 "tool_name": "Bash",
-            })
+            }
+            p2.update(term_info)
+            send_event(p2)
             time.sleep(1.5)
 
             print("➔ Terminal 3: sight3-client (Needs permission)")
-            send_event({
+            p3 = {
                 "session_id": "sess_3_client",
                 "cwd": "/Users/sahilbagnial/Desktop/repo/sight3-client",
                 "hook_event_name": "Notification",
                 "message": "Approve running `npm install`?",
-            })
+            }
+            p3.update(term_info)
+            send_event(p3)
             time.sleep(2.0)
 
             print("➔ Terminal 1: data-platform (Complete)")
-            send_event({
+            p1_stop = {
                 "session_id": "sess_1_data",
                 "cwd": "/Users/sahilbagnial/Desktop/repo/data-platform",
                 "hook_event_name": "Stop",
-            })
-            print("Multi-session simulation events dispatched! Check your Vibe HUD.")
+            }
+            p1_stop.update(term_info)
+            send_event(p1_stop)
+            print("Multi-session simulation events dispatched! Click any terminal card to jump to it.")
         else:
             print("Running Single Session Simulation:")
-            send_event({"hook_event_name": "UserPromptSubmit", "prompt": "Refactor auth module"})
+            p = {"hook_event_name": "UserPromptSubmit", "prompt": "Refactor auth module"}
+            p.update(term_info)
+            send_event(p)
             time.sleep(2)
-            send_event({"hook_event_name": "PreToolUse", "tool_name": "Bash"})
+            p_tool = {"hook_event_name": "PreToolUse", "tool_name": "Bash"}
+            p_tool.update(term_info)
+            send_event(p_tool)
             time.sleep(2)
-            send_event({"hook_event_name": "Stop"})
+            p_stop = {"hook_event_name": "Stop"}
+            p_stop.update(term_info)
+            send_event(p_stop)
             print("Single session simulation finished!")
     elif args.state and args.state != "start":
         msg = " ".join(args.message) if args.message else f"State changed to {args.state}"
-        send_event({"status": args.state, "message": msg, "cwd": os.getcwd()})
+        payload = {"status": args.state, "message": msg, "cwd": os.getcwd()}
+        payload.update(detect_terminal_info())
+        send_event(payload)
         print(f"Sent {args.state} state to Vibe HUD")
     else:
         from vibe_hud.window import VibeHudApp

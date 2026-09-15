@@ -10,6 +10,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const sessionList = document.getElementById("sessionList");
 
   // Settings elements
+  const selOrientation = document.getElementById("selOrientation");
+  const selScale = document.getElementById("selScale");
   const selTheme = document.getElementById("selTheme");
   const chkSound = document.getElementById("chkSound");
   const selSoundStyle = document.getElementById("selSoundStyle");
@@ -27,9 +29,13 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentAggregateStatus = "idle";
   let activeStartedAt = null;
   let currentSessions = [];
+  let defaultHeadlineTitle = "Vibe HUD Ready";
+  let defaultHeadlineSubtitle = "Standing by for Claude...";
 
   let settings = {
     theme: "dark-glass",
+    orientation: "horizontal",
+    scale: "medium",
     soundEnabled: true,
     soundStyle: "marimba",
     soundVolume: 0.8,
@@ -64,15 +70,19 @@ document.addEventListener("DOMContentLoaded", () => {
     timerBadge.textContent = formatTime(elapsed);
   }
 
-  // Exposed for Python controller to apply loaded settings
   window.applySettings = function (newSettings) {
     settings = Object.assign(settings, newSettings);
-    document.body.setAttribute("data-theme", settings.theme);
-    selTheme.value = settings.theme;
-    chkSound.checked = settings.soundEnabled;
-    selSoundStyle.value = settings.soundStyle;
-    rngVolume.value = settings.soundVolume;
-    selAutoDismiss.value = String(settings.autoDismissSec);
+    document.body.setAttribute("data-theme", settings.theme || "dark-glass");
+    document.body.setAttribute("data-orientation", settings.orientation || "horizontal");
+    document.body.setAttribute("data-scale", settings.scale || "medium");
+
+    if (selTheme) selTheme.value = settings.theme || "dark-glass";
+    if (selOrientation) selOrientation.value = settings.orientation || "horizontal";
+    if (selScale) selScale.value = settings.scale || "medium";
+    if (chkSound) chkSound.checked = settings.soundEnabled;
+    if (selSoundStyle) selSoundStyle.value = settings.soundStyle || "marimba";
+    if (rngVolume) rngVolume.value = settings.soundVolume !== undefined ? settings.soundVolume : 0.8;
+    if (selAutoDismiss) selAutoDismiss.value = String(settings.autoDismissSec || 60);
 
     window.hudAudio?.configure({
       enabled: settings.soundEnabled,
@@ -92,17 +102,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Exposed for Python controller to broadcast multi-session state
   window.updateState = function (stateData) {
     const prevStatus = currentAggregateStatus;
     currentAggregateStatus = stateData.aggregate_status || "idle";
     currentSessions = stateData.sessions || [];
 
-    container.setAttribute("data-status", currentAggregateStatus);
-    pillTitle.textContent = stateData.headline_title || "Vibe HUD Ready";
-    pillSubtitle.textContent = stateData.headline_subtitle || "";
+    defaultHeadlineTitle = stateData.headline_title || "Vibe HUD Ready";
+    defaultHeadlineSubtitle = stateData.headline_subtitle || "";
 
-    // Active tool badge on pill
+    container.setAttribute("data-status", currentAggregateStatus);
+    pillTitle.textContent = defaultHeadlineTitle;
+    pillSubtitle.textContent = defaultHeadlineSubtitle;
+
     if (stateData.active_tool && currentAggregateStatus === "working") {
       toolBadge.textContent = stateData.active_tool.toUpperCase();
       toolBadge.classList.add("visible");
@@ -110,7 +121,6 @@ document.addEventListener("DOMContentLoaded", () => {
       toolBadge.classList.remove("visible");
     }
 
-    // Sound and timer transitions
     if (currentAggregateStatus === "working") {
       if (prevStatus !== "working") {
         startLiveTimer(Date.now() - (stateData.active_timer ? stateData.active_timer * 1000 : 0));
@@ -132,16 +142,13 @@ document.addEventListener("DOMContentLoaded", () => {
       timerBadge.textContent = "00:00";
     }
 
-    // Render Multi-Orb Cluster on Pill
-    renderOrbCluster(currentSessions, stateData.active_session_id);
-
-    // Render Stacked Multi-Session List in drawer
+    renderOrbCluster(currentSessions);
     renderSessionList(currentSessions);
   };
 
-  function renderOrbCluster(sessions, activeId) {
+  function renderOrbCluster(sessions) {
     orbCluster.innerHTML = "";
-    sessionCount.textContent = sessions.length;
+    if (sessionCount) sessionCount.textContent = sessions ? sessions.length : 0;
 
     if (!sessions || sessions.length === 0) {
       const emptyOrb = document.createElement("div");
@@ -162,7 +169,7 @@ document.addEventListener("DOMContentLoaded", () => {
       orb.setAttribute("data-status", s.status);
 
       const shortId = s.id ? s.id.slice(0, 7) : "";
-      const tooltipText = `📁 ${s.repo_name} (${shortId ? "#" + shortId : s.status}) · ${s.title}`;
+      const tooltipText = `📁 ${s.repo_name} (${shortId ? "#" + shortId : s.status}) · Click to jump`;
 
       orb.innerHTML = `
         <div class="orb-ring"></div>
@@ -170,9 +177,23 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="orb-tooltip">${escapeHtml(tooltipText)}</div>
       `;
 
-      orb.addEventListener("click", () => {
-        pillTitle.textContent = s.title;
-        pillSubtitle.textContent = s.detail || "";
+      // Hover feedback: preview in pill title/subtitle
+      orb.addEventListener("mouseenter", () => {
+        pillTitle.textContent = `📁 ${s.repo_name} (${s.status.toUpperCase()})`;
+        pillSubtitle.textContent = s.prompt || s.detail || "Click dot to jump to terminal";
+      });
+
+      orb.addEventListener("mouseleave", () => {
+        pillTitle.textContent = defaultHeadlineTitle;
+        pillSubtitle.textContent = defaultHeadlineSubtitle;
+      });
+
+      // Click to focus terminal!
+      orb.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (window.pywebview && window.pywebview.api) {
+          window.pywebview.api.focus_session(s.id);
+        }
       });
 
       orbCluster.appendChild(orb);
@@ -193,6 +214,7 @@ document.addEventListener("DOMContentLoaded", () => {
     sessions.forEach((s) => {
       const card = document.createElement("div");
       card.className = "session-card";
+      card.title = "Click to jump to this terminal window";
 
       const shortId = s.id ? s.id.slice(0, 7) : "";
       const now = Date.now();
@@ -213,17 +235,25 @@ document.addEventListener("DOMContentLoaded", () => {
               <span>📁 ${escapeHtml(s.repo_name)}</span>
               ${shortId ? `<span class="session-id-tag">#${shortId}</span>` : ""}
             </div>
-            <div class="session-task-preview" title="${escapeHtml(s.detail || s.prompt || s.title)}">
+            <div class="session-task-preview">
               ${escapeHtml(s.prompt || s.detail || s.title)}
             </div>
           </div>
         </div>
         <div class="session-card-right">
+          <span class="jump-hint">Jump ↗</span>
           ${s.tool_name ? `<span class="tool-badge visible">${escapeHtml(s.tool_name)}</span>` : ""}
           <span class="timer-badge">${timerStr}</span>
           <button class="session-dismiss-btn" title="Dismiss Session" data-id="${s.id}">✖</button>
         </div>
       `;
+
+      // Click card to jump to terminal!
+      card.addEventListener("click", () => {
+        if (window.pywebview && window.pywebview.api) {
+          window.pywebview.api.focus_session(s.id);
+        }
+      });
 
       card.querySelector(".session-dismiss-btn").addEventListener("click", (e) => {
         e.stopPropagation();
@@ -241,13 +271,13 @@ document.addEventListener("DOMContentLoaded", () => {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
-  // Drawer expansion toggle
+  // Expansion
   expandBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     isExpanded = !isExpanded;
     container.classList.toggle("expanded", isExpanded);
     if (window.pywebview && window.pywebview.api) {
-      window.pywebview.api.set_expanded(isExpanded);
+      window.pywebview.api.set_expanded(isExpanded, settings.orientation);
     }
   });
 
@@ -264,40 +294,61 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Settings change listeners
-  selTheme.addEventListener("change", () => {
+  // Orientation setting
+  selOrientation?.addEventListener("change", () => {
+    settings.orientation = selOrientation.value;
+    document.body.setAttribute("data-orientation", settings.orientation);
+    persistSettings();
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.set_orientation(settings.orientation);
+    }
+  });
+
+  // Scale setting
+  selScale?.addEventListener("change", () => {
+    settings.scale = selScale.value;
+    document.body.setAttribute("data-scale", settings.scale);
+    persistSettings();
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.set_scale(settings.scale);
+    }
+  });
+
+  // Theme setting
+  selTheme?.addEventListener("change", () => {
     settings.theme = selTheme.value;
     document.body.setAttribute("data-theme", settings.theme);
     persistSettings();
   });
 
-  chkSound.addEventListener("change", () => {
+  // Sound settings
+  chkSound?.addEventListener("change", () => {
     settings.soundEnabled = chkSound.checked;
     persistSettings();
   });
 
-  selSoundStyle.addEventListener("change", () => {
+  selSoundStyle?.addEventListener("change", () => {
     settings.soundStyle = selSoundStyle.value;
     persistSettings();
     window.hudAudio?.playTest();
   });
 
-  rngVolume.addEventListener("input", () => {
+  rngVolume?.addEventListener("input", () => {
     settings.soundVolume = parseFloat(rngVolume.value);
     persistSettings();
   });
 
-  btnTestSound.addEventListener("click", () => {
+  btnTestSound?.addEventListener("click", () => {
     window.hudAudio?.playTest();
   });
 
-  selAutoDismiss.addEventListener("change", () => {
+  selAutoDismiss?.addEventListener("change", () => {
     settings.autoDismissSec = parseInt(selAutoDismiss.value, 10);
     persistSettings();
   });
 
   // Actions
-  btnHooks.addEventListener("click", async () => {
+  btnHooks?.addEventListener("click", async () => {
     btnHooks.innerHTML = "<span>Installing...</span>";
     if (window.pywebview && window.pywebview.api) {
       const res = await window.pywebview.api.install_hooks();
@@ -311,13 +362,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  btnCenter.addEventListener("click", () => {
+  btnCenter?.addEventListener("click", () => {
     if (window.pywebview && window.pywebview.api) {
       window.pywebview.api.center_window();
     }
   });
 
-  btnSimMulti.addEventListener("click", () => {
+  btnSimMulti?.addEventListener("click", () => {
     if (window.pywebview && window.pywebview.api) {
       window.pywebview.api.simulate("multi");
     }
