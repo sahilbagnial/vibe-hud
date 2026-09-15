@@ -367,6 +367,10 @@ class VibeHudApp:
         cwd = s.get("cwd")
         if not cwd or not os.path.exists(cwd):
             return False
+        # Reuse-window matching is a string comparison against however the
+        # IDE has the folder open internally; resolve symlinks/relative bits
+        # so a session's raw cwd is as likely as possible to match exactly.
+        cwd = os.path.realpath(cwd)
 
         bundle_id = s.get("bundle_id") or ""
         term_program = (s.get("term_program") or "").lower()
