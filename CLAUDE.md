@@ -23,9 +23,11 @@ doesn't have to keep switching back to check.
 
 ```
 vibe_hud/
-  cli.py        vibe-hud and vibe-hud-hook CLI entry points
-  server.py     Local HTTP server on port 28790, HUD_PORT constant lives here
-  ui/           WebKit overlay — HTML, CSS, JS
+  cli.py         vibe-hud and vibe-hud-hook CLI entry points
+  core/          Session state machine, settings, HTTP server, hook install (OS-agnostic)
+  platform/      One PlatformBackend per OS (macos.py, windows.py, linux.py)
+  app.py         VibeHudApp/VibeHudApi — thin orchestrator wiring core + platform + pywebview
+  ui/            WebKit overlay — HTML, CSS, JS
 pyproject.toml  Poetry config — only place to add/remove dependencies
 AGENTS.md       Full agent instructions (architecture, state machine, do-nots)
 llms.txt        Machine-readable project summary for LLM crawlers
@@ -51,8 +53,9 @@ poetry run vibe-hud idle
 ## Key rules (follow these always)
 
 1. **Never add polling.** State only changes via HTTP events or file fallback.
-2. **Port is a constant.** Import `HUD_PORT` from `vibe_hud/server.py` — never
-   hardcode `28790` elsewhere.
+2. **Port is a constant.** The default port lives in `vibe_hud/core/server.py`
+   (`HudServer`) and `vibe_hud/cli.py` (`DEFAULT_PORT`) — never hardcode
+   `28790` elsewhere.
 3. **Poetry only.** No `requirements.txt`, no `pip install` suggestions.
 4. **UI = WebKit.** The overlay is HTML/CSS/JS inside pywebview. Don't suggest
    tkinter, Qt, or other GUI toolkits.

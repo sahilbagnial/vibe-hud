@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-import subprocess
 import sys
 import time
 import urllib.request
@@ -9,50 +8,7 @@ import urllib.error
 from pathlib import Path
 
 from vibe_hud.core.hooks import HooksManager
-
-
-def detect_terminal_info():
-    env = os.environ
-    term_program = env.get("TERM_PROGRAM", "")
-    iterm_session = env.get("ITERM_SESSION_ID", "")
-    # __CFBundleIdentifier is the only reliable way to tell VS Code-family IDEs
-    # apart: their integrated terminals all report app_name as "Electron" at
-    # the OS process level (see detect_terminal_info's ps walk below), and
-    # TERM_PROGRAM is just "vscode" for all of them (VS Code, Cursor,
-    # Windsurf, Antigravity, ...). JetBrains terminals are identified by
-    # TERMINAL_EMULATOR instead.
-    bundle_id = env.get("__CFBundleIdentifier", "")
-    terminal_emulator = env.get("TERMINAL_EMULATOR", "")
-
-    app_pid = None
-    app_name = None
-    curr = os.getppid()
-
-    while curr > 1:
-        try:
-            out = subprocess.check_output(["ps", "-p", str(curr), "-o", "ppid=,comm="]).decode().strip()
-            if not out:
-                break
-            parts = out.split(None, 1)
-            ppid = int(parts[0])
-            comm = parts[1] if len(parts) > 1 else ""
-            if ppid == 1:
-                app_pid = curr
-                app_name = Path(comm).name
-                break
-            curr = ppid
-        except Exception:
-            break
-
-    return {
-        "term_program": term_program,
-        "iterm_session": iterm_session,
-        "bundle_id": bundle_id,
-        "terminal_emulator": terminal_emulator,
-        "app_pid": app_pid,
-        "app_name": app_name,
-    }
-
+from vibe_hud.platform import get_backend
 
 DEFAULT_PORT = 28790
 
@@ -115,7 +71,7 @@ def hook():
     if "cwd" not in payload:
         payload["cwd"] = os.getcwd()
 
-    payload.update(detect_terminal_info())
+    payload.update(get_backend().detect_terminal_info())
     payload["timestamp"] = int(time.time() * 1000)
     send_event(payload)
     sys.exit(0)
@@ -164,7 +120,7 @@ def main():
     elif args.command == "hook":
         hook()
     elif args.command == "simulate":
-        term_info = detect_terminal_info()
+        term_info = get_backend().detect_terminal_info()
         if args.scenario == "multi":
             print("Running Multi-Session Simulation (3 Terminals):")
             print("➔ Terminal 1: data-platform (Prompt submitted)")
@@ -226,11 +182,11 @@ def main():
     elif args.state and args.state != "start":
         msg = " ".join(args.message) if args.message else f"State changed to {args.state}"
         payload = {"status": args.state, "message": msg, "cwd": os.getcwd()}
-        payload.update(detect_terminal_info())
+        payload.update(get_backend().detect_terminal_info())
         send_event(payload)
         print(f"Sent {args.state} state to Vibe HUD")
     else:
-        from vibe_hud.window import VibeHudApp
+        from vibe_hud.app import VibeHudApp
         app = VibeHudApp()
         app.start()
 
