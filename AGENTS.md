@@ -8,9 +8,12 @@ project's purpose, conventions, and how an agent should behave when working here
 
 ## Project Summary
 
-**Vibe HUD** is a macOS desktop overlay that shows real-time status of AI coding
-agents via a floating glassmorphic pill. It is written in Python (pywebview) and
-uses Claude Code lifecycle hooks to receive events.
+**Vibe HUD** is a cross-platform (macOS, Windows, Linux) desktop overlay that
+shows real-time status of AI coding agents via a floating glassmorphic pill.
+It is written in Python (pywebview) and uses Claude Code lifecycle hooks to
+receive events. macOS has full support (tray icon included); Windows/Linux
+have the core status HUD and IDE-CLI click-to-focus, with best-effort native
+terminal-focus fallback and no tray icon yet.
 
 **Repo:** https://github.com/sahilbagnial/vibe-hud  
 **Language:** Python 3.10+ (package manager: Poetry)  
@@ -22,14 +25,25 @@ uses Claude Code lifecycle hooks to receive events.
 
 ```
 vibe_hud/
-  cli.py        CLI entry points (vibe-hud, vibe-hud-hook)
-  server.py     Local HTTP server (port 28790) that receives hook events
-  ui/           HTML/CSS/JS for the WebKit overlay
+  cli.py         CLI entry points (vibe-hud, vibe-hud-hook)
+  core/          Session state machine, settings, HTTP server (port 28790),
+                 hook install/remove — all OS-agnostic, no sys.platform checks
+  platform/      One PlatformBackend implementation per OS:
+                   base.py     PlatformBackend ABC + shared IDE-CLI jump helper
+                   macos.py    AppKit window tricks, NSStatusBar tray, terminal detect/focus
+                   windows.py  pywin32 focus fallback, psutil terminal detect
+                   linux.py    xdotool focus fallback, psutil terminal detect
+  app.py         VibeHudApp/VibeHudApi — thin orchestrator wiring core + platform + pywebview
+  ui/            HTML/CSS/JS for the WebKit overlay
 pyproject.toml  Dependencies and scripts
 README.md       User-facing documentation
 llms.txt        Machine-readable project summary (llmstxt.org convention)
 CLAUDE.md       Claude Code–specific context
 ```
+
+**Rule of thumb:** all `sys.platform` branching lives under `platform/`. If
+you're changing OS-specific behavior, you should only need to touch one file
+there — `core/` and `app.py` must stay platform-agnostic.
 
 ---
 
@@ -72,9 +86,10 @@ poetry add <package>
    other than pywebview. The overlay appearance is controlled entirely by the
    files in `vibe_hud/ui/`.
 
-4. **macOS-first, but keep cross-platform in mind.** AppKit calls that enable
-   always-on-top and click-through behavior are isolated so they can be swapped
-   for Windows/Linux equivalents later.
+4. **OS-specific code lives only under `platform/`.** Each OS has its own
+   `PlatformBackend` implementation (`platform/macos.py`, `windows.py`,
+   `linux.py`); `core/` and `app.py` call through that interface and never
+   check `sys.platform` directly.
 
 ---
 
@@ -113,8 +128,8 @@ The hook posts JSON to `http://127.0.0.1:28790/event`:
 
 - Do not add a requirements.txt alongside pyproject.toml — Poetry is the sole
   dependency manager.
-- Do not hardcode the server port anywhere except `vibe_hud/server.py`; use the
-  constant `HUD_PORT` imported from there.
+- Do not hardcode the server port anywhere except `vibe_hud/core/server.py`
+  (`HudServer`) and `vibe_hud/cli.py` (`DEFAULT_PORT`).
 - Do not add polling loops to check Claude's state.
 - Do not modify `~/.claude/settings.json` directly in tests — use
   `poetry run vibe-hud install` or mock the file path in tests.
@@ -124,9 +139,14 @@ The hook posts JSON to `http://127.0.0.1:28790/event`:
 ## Contribution Areas (Good First Issues for Agents)
 
 - Add Aider / Cursor / OpenCode adapter (new CLI subcommand + hook docs)
-- Add a macOS menu bar tray icon (NSStatusBar via pyobjc)
-- Write unit tests for the state machine in `server.py`
-- Add Windows always-on-top support via `win32gui` / `ctypes`
+- Add a Windows/Linux tray icon (`platform/windows.py` / `platform/linux.py`
+  `setup_tray()` — currently a no-op on both)
+- Add real Windows "always on top across virtual desktops" / Linux
+  "sticky window" support (`platform/windows.py` / `platform/linux.py`
+  `configure_window()` — currently a no-op on both, unlike macOS's
+  `NSWindowCollectionBehaviorCanJoinAllSpaces`)
+- Expand `platform/windows.py` / `platform/linux.py`'s `KNOWN_APP_*` /
+  `CLI_BY_*` lookup tables with more IDEs/terminals
 
 ---
 
