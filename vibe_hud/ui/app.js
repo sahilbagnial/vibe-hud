@@ -1,88 +1,247 @@
 document.addEventListener("DOMContentLoaded", () => {
   const container = document.getElementById("hudContainer");
+  const orbCluster = document.getElementById("orbCluster");
   const pillTitle = document.getElementById("pillTitle");
   const pillSubtitle = document.getElementById("pillSubtitle");
   const toolBadge = document.getElementById("toolBadge");
   const timerBadge = document.getElementById("timerBadge");
   const expandBtn = document.getElementById("expandBtn");
-  const promptBox = document.getElementById("promptBox");
+  const sessionCount = document.getElementById("sessionCount");
+  const sessionList = document.getElementById("sessionList");
+
+  // Settings elements
+  const selTheme = document.getElementById("selTheme");
+  const chkSound = document.getElementById("chkSound");
+  const selSoundStyle = document.getElementById("selSoundStyle");
+  const rngVolume = document.getElementById("rngVolume");
+  const btnTestSound = document.getElementById("btnTestSound");
+  const selAutoDismiss = document.getElementById("selAutoDismiss");
+
+  // Action elements
   const btnHooks = document.getElementById("btnHooks");
   const btnCenter = document.getElementById("btnCenter");
-  const chkSound = document.getElementById("chkSound");
+  const btnSimMulti = document.getElementById("btnSimMulti");
 
   let isExpanded = false;
   let timerInterval = null;
-  let currentStatus = "idle";
-  let startTime = null;
+  let currentAggregateStatus = "idle";
+  let activeStartedAt = null;
+  let currentSessions = [];
+
+  let settings = {
+    theme: "dark-glass",
+    soundEnabled: true,
+    soundStyle: "marimba",
+    soundVolume: 0.8,
+    autoDismissSec: 60,
+    alwaysOnTop: true,
+  };
 
   function formatTime(seconds) {
+    if (seconds === undefined || seconds === null || isNaN(seconds)) return "00:00";
     const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    const secs = Math.floor(seconds % 60);
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   }
 
-  function startTimer(startedAt) {
-    stopTimer();
-    startTime = startedAt || Date.now();
-    updateTimerDisplay();
-    timerInterval = setInterval(updateTimerDisplay, 1000);
+  function startLiveTimer(startedAt) {
+    stopLiveTimer();
+    activeStartedAt = startedAt || Date.now();
+    updateTimerText();
+    timerInterval = setInterval(updateTimerText, 1000);
   }
 
-  function stopTimer() {
+  function stopLiveTimer() {
     if (timerInterval) {
       clearInterval(timerInterval);
       timerInterval = null;
     }
   }
 
-  function updateTimerDisplay() {
-    if (!startTime) return;
-    const elapsed = Math.max(0, Math.floor((Date.now() - startTime) / 1000));
+  function updateTimerText() {
+    if (!activeStartedAt) return;
+    const elapsed = Math.max(0, Math.floor((Date.now() - activeStartedAt) / 1000));
     timerBadge.textContent = formatTime(elapsed);
   }
 
-  // Exposed globally for Python to call via evaluate_js
-  window.updateState = function (state) {
-    const prevStatus = currentStatus;
-    currentStatus = state.status || "idle";
+  // Exposed for Python controller to apply loaded settings
+  window.applySettings = function (newSettings) {
+    settings = Object.assign(settings, newSettings);
+    document.body.setAttribute("data-theme", settings.theme);
+    selTheme.value = settings.theme;
+    chkSound.checked = settings.soundEnabled;
+    selSoundStyle.value = settings.soundStyle;
+    rngVolume.value = settings.soundVolume;
+    selAutoDismiss.value = String(settings.autoDismissSec);
 
-    container.setAttribute("data-status", currentStatus);
-    pillTitle.textContent = state.title || "Vibe HUD Ready";
-    pillSubtitle.textContent = state.detail || "";
+    window.hudAudio?.configure({
+      enabled: settings.soundEnabled,
+      style: settings.soundStyle,
+      volume: settings.soundVolume,
+    });
+  };
 
-    if (state.prompt) {
-      promptBox.textContent = state.prompt;
-    } else if (state.detail) {
-      promptBox.textContent = state.detail;
+  function persistSettings() {
+    window.hudAudio?.configure({
+      enabled: settings.soundEnabled,
+      style: settings.soundStyle,
+      volume: settings.soundVolume,
+    });
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.save_settings(JSON.stringify(settings));
     }
+  }
 
-    if (state.tool_name && currentStatus === "working") {
-      toolBadge.textContent = state.tool_name.toUpperCase();
+  // Exposed for Python controller to broadcast multi-session state
+  window.updateState = function (stateData) {
+    const prevStatus = currentAggregateStatus;
+    currentAggregateStatus = stateData.aggregate_status || "idle";
+    currentSessions = stateData.sessions || [];
+
+    container.setAttribute("data-status", currentAggregateStatus);
+    pillTitle.textContent = stateData.headline_title || "Vibe HUD Ready";
+    pillSubtitle.textContent = stateData.headline_subtitle || "";
+
+    // Active tool badge on pill
+    if (stateData.active_tool && currentAggregateStatus === "working") {
+      toolBadge.textContent = stateData.active_tool.toUpperCase();
       toolBadge.classList.add("visible");
     } else {
       toolBadge.classList.remove("visible");
     }
 
-    if (currentStatus === "working") {
+    // Sound and timer transitions
+    if (currentAggregateStatus === "working") {
       if (prevStatus !== "working") {
-        startTimer(state.started_at);
+        startLiveTimer(Date.now() - (stateData.active_timer ? stateData.active_timer * 1000 : 0));
       }
-    } else if (currentStatus === "complete") {
-      stopTimer();
-      if (state.duration !== undefined) {
-        timerBadge.textContent = formatTime(state.duration);
+    } else if (currentAggregateStatus === "complete") {
+      stopLiveTimer();
+      if (stateData.active_timer !== undefined && stateData.active_timer !== null) {
+        timerBadge.textContent = formatTime(stateData.active_timer);
       }
       if (prevStatus === "working") {
         window.hudAudio?.playComplete();
       }
-    } else if (currentStatus === "attention") {
-      window.hudAudio?.playAttention();
-    } else if (currentStatus === "idle") {
-      stopTimer();
+    } else if (currentAggregateStatus === "attention") {
+      if (prevStatus !== "attention") {
+        window.hudAudio?.playAttention();
+      }
+    } else if (currentAggregateStatus === "idle") {
+      stopLiveTimer();
       timerBadge.textContent = "00:00";
     }
+
+    // Render Multi-Orb Cluster on Pill
+    renderOrbCluster(currentSessions, stateData.active_session_id);
+
+    // Render Stacked Multi-Session List in drawer
+    renderSessionList(currentSessions);
   };
 
+  function renderOrbCluster(sessions, activeId) {
+    orbCluster.innerHTML = "";
+    sessionCount.textContent = sessions.length;
+
+    if (!sessions || sessions.length === 0) {
+      const emptyOrb = document.createElement("div");
+      emptyOrb.className = "orb-item";
+      emptyOrb.setAttribute("data-status", "idle");
+      emptyOrb.innerHTML = `
+        <div class="orb-ring"></div>
+        <div class="orb-dot"></div>
+        <div class="orb-tooltip">📁 Standing by for Claude</div>
+      `;
+      orbCluster.appendChild(emptyOrb);
+      return;
+    }
+
+    sessions.forEach((s) => {
+      const orb = document.createElement("div");
+      orb.className = "orb-item";
+      orb.setAttribute("data-status", s.status);
+
+      const shortId = s.id ? s.id.slice(0, 7) : "";
+      const tooltipText = `📁 ${s.repo_name} (${shortId ? "#" + shortId : s.status}) · ${s.title}`;
+
+      orb.innerHTML = `
+        <div class="orb-ring"></div>
+        <div class="orb-dot"></div>
+        <div class="orb-tooltip">${escapeHtml(tooltipText)}</div>
+      `;
+
+      orb.addEventListener("click", () => {
+        pillTitle.textContent = s.title;
+        pillSubtitle.textContent = s.detail || "";
+      });
+
+      orbCluster.appendChild(orb);
+    });
+  }
+
+  function renderSessionList(sessions) {
+    if (!sessions || sessions.length === 0) {
+      sessionList.innerHTML = `
+        <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 12px;">
+          No active terminal sessions.<br>Submit a prompt to Claude Code to see live tracking.
+        </div>
+      `;
+      return;
+    }
+
+    sessionList.innerHTML = "";
+    sessions.forEach((s) => {
+      const card = document.createElement("div");
+      card.className = "session-card";
+
+      const shortId = s.id ? s.id.slice(0, 7) : "";
+      const now = Date.now();
+      let timerStr = "";
+      if (s.status === "working" && s.started_at) {
+        timerStr = formatTime(Math.floor((now - s.started_at) / 1000));
+      } else if (s.duration) {
+        timerStr = `${s.duration}s`;
+      } else {
+        timerStr = s.status;
+      }
+
+      card.innerHTML = `
+        <div class="session-card-left">
+          <div class="session-dot ${s.status}"></div>
+          <div class="session-meta">
+            <div class="session-repo">
+              <span>📁 ${escapeHtml(s.repo_name)}</span>
+              ${shortId ? `<span class="session-id-tag">#${shortId}</span>` : ""}
+            </div>
+            <div class="session-task-preview" title="${escapeHtml(s.detail || s.prompt || s.title)}">
+              ${escapeHtml(s.prompt || s.detail || s.title)}
+            </div>
+          </div>
+        </div>
+        <div class="session-card-right">
+          ${s.tool_name ? `<span class="tool-badge visible">${escapeHtml(s.tool_name)}</span>` : ""}
+          <span class="timer-badge">${timerStr}</span>
+          <button class="session-dismiss-btn" title="Dismiss Session" data-id="${s.id}">✖</button>
+        </div>
+      `;
+
+      card.querySelector(".session-dismiss-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (window.pywebview && window.pywebview.api) {
+          window.pywebview.api.dismiss_session(s.id);
+        }
+      });
+
+      sessionList.appendChild(card);
+    });
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  // Drawer expansion toggle
   expandBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     isExpanded = !isExpanded;
@@ -92,6 +251,52 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // Tab switching
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
+
+      btn.classList.add("active");
+      const tabId = btn.getAttribute("data-tab");
+      const targetContent = document.getElementById("tab" + tabId.charAt(0).toUpperCase() + tabId.slice(1));
+      if (targetContent) targetContent.classList.add("active");
+    });
+  });
+
+  // Settings change listeners
+  selTheme.addEventListener("change", () => {
+    settings.theme = selTheme.value;
+    document.body.setAttribute("data-theme", settings.theme);
+    persistSettings();
+  });
+
+  chkSound.addEventListener("change", () => {
+    settings.soundEnabled = chkSound.checked;
+    persistSettings();
+  });
+
+  selSoundStyle.addEventListener("change", () => {
+    settings.soundStyle = selSoundStyle.value;
+    persistSettings();
+    window.hudAudio?.playTest();
+  });
+
+  rngVolume.addEventListener("input", () => {
+    settings.soundVolume = parseFloat(rngVolume.value);
+    persistSettings();
+  });
+
+  btnTestSound.addEventListener("click", () => {
+    window.hudAudio?.playTest();
+  });
+
+  selAutoDismiss.addEventListener("change", () => {
+    settings.autoDismissSec = parseInt(selAutoDismiss.value, 10);
+    persistSettings();
+  });
+
+  // Actions
   btnHooks.addEventListener("click", async () => {
     btnHooks.innerHTML = "<span>Installing...</span>";
     if (window.pywebview && window.pywebview.api) {
@@ -112,8 +317,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  chkSound.addEventListener("change", () => {
-    window.hudAudio?.setEnabled(chkSound.checked);
+  btnSimMulti.addEventListener("click", () => {
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.simulate("multi");
+    }
   });
 
   document.querySelectorAll(".sim-dot-btn").forEach((btn) => {

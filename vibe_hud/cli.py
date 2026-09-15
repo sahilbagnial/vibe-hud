@@ -22,7 +22,6 @@ def send_event(payload: dict) -> bool:
         with urllib.request.urlopen(req, timeout=0.3):
             return True
     except Exception:
-        # Fallback to state file
         try:
             state_dir = Path.home() / ".claude-hud"
             state_dir.mkdir(parents=True, exist_ok=True)
@@ -55,6 +54,9 @@ def hook():
         if len(sys.argv) > 2:
             payload["message"] = " ".join(sys.argv[2:])
 
+    if "cwd" not in payload:
+        payload["cwd"] = os.getcwd()
+
     payload["timestamp"] = int(time.time() * 1000)
     send_event(payload)
     sys.exit(0)
@@ -72,9 +74,9 @@ def main():
     subparsers.add_parser("install", help="Configure hooks in ~/.claude/settings.json")
     subparsers.add_parser("remove", help="Remove hooks from ~/.claude/settings.json")
     subparsers.add_parser("status", help="Check hooks configuration status")
-    subparsers.add_parser("simulate", help="Run simulated agent lifecycle")
+    sim_p = subparsers.add_parser("simulate", help="Run simulated agent lifecycle")
+    sim_p.add_argument("scenario", nargs="?", default="multi", choices=["single", "multi"], help="Scenario to simulate")
 
-    # Direct status trigger
     parser.add_argument("state", nargs="?", choices=["working", "attention", "complete", "idle", "start"], help="Trigger state")
     parser.add_argument("message", nargs="*", help="Optional status message")
 
@@ -99,25 +101,55 @@ def main():
     elif args.command == "hook":
         hook()
     elif args.command == "simulate":
-        print("Running Vibe HUD simulation:")
-        print("1. Prompt submitted ➔ RED")
-        send_event({"hook_event_name": "UserPromptSubmit", "prompt": "Refactor auth pipeline and tests"})
-        time.sleep(2.5)
-        print("2. Tool executing ➔ RED (BASH)")
-        send_event({"hook_event_name": "PreToolUse", "tool_name": "Bash"})
-        time.sleep(2.5)
-        print("3. Human permission required ➔ AMBER")
-        send_event({"hook_event_name": "Notification", "message": "Approve database migration?"})
-        time.sleep(2.5)
-        print("4. Turn complete ➔ EMERALD GREEN")
-        send_event({"hook_event_name": "Stop"})
-        print("Finished simulation!")
+        if args.scenario == "multi":
+            print("Running Multi-Session Simulation (3 Terminals):")
+            print("➔ Terminal 1: data-platform (Prompt submitted)")
+            send_event({
+                "session_id": "sess_1_data",
+                "cwd": "/Users/sahilbagnial/Desktop/repo/data-platform",
+                "hook_event_name": "UserPromptSubmit",
+                "prompt": "Run database migrations and seed dev users",
+            })
+            time.sleep(1.5)
+
+            print("➔ Terminal 2: sight3-backend (Tool execution)")
+            send_event({
+                "session_id": "sess_2_backend",
+                "cwd": "/Users/sahilbagnial/Desktop/repo/sight3-backend",
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Bash",
+            })
+            time.sleep(1.5)
+
+            print("➔ Terminal 3: sight3-client (Needs permission)")
+            send_event({
+                "session_id": "sess_3_client",
+                "cwd": "/Users/sahilbagnial/Desktop/repo/sight3-client",
+                "hook_event_name": "Notification",
+                "message": "Approve running `npm install`?",
+            })
+            time.sleep(2.0)
+
+            print("➔ Terminal 1: data-platform (Complete)")
+            send_event({
+                "session_id": "sess_1_data",
+                "cwd": "/Users/sahilbagnial/Desktop/repo/data-platform",
+                "hook_event_name": "Stop",
+            })
+            print("Multi-session simulation events dispatched! Check your Vibe HUD.")
+        else:
+            print("Running Single Session Simulation:")
+            send_event({"hook_event_name": "UserPromptSubmit", "prompt": "Refactor auth module"})
+            time.sleep(2)
+            send_event({"hook_event_name": "PreToolUse", "tool_name": "Bash"})
+            time.sleep(2)
+            send_event({"hook_event_name": "Stop"})
+            print("Single session simulation finished!")
     elif args.state and args.state != "start":
         msg = " ".join(args.message) if args.message else f"State changed to {args.state}"
-        send_event({"status": args.state, "message": msg})
+        send_event({"status": args.state, "message": msg, "cwd": os.getcwd()})
         print(f"Sent {args.state} state to Vibe HUD")
     else:
-        # Launch floating window
         from vibe_hud.window import VibeHudApp
         app = VibeHudApp()
         app.start()
