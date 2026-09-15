@@ -27,6 +27,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnSimMulti = document.getElementById("btnSimMulti");
   const btnQuit = document.getElementById("btnQuit");
 
+  const MAX_VISIBLE_ORBS = 3;
+
   let isExpanded = false;
   let timerInterval = null;
   let currentAggregateStatus = "idle";
@@ -72,6 +74,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!activeStartedAt) return;
     const elapsed = Math.max(0, Math.floor((Date.now() - activeStartedAt) / 1000));
     timerBadge.textContent = formatTime(elapsed);
+  }
+
+  function setExpanded(next) {
+    isExpanded = next;
+    container.classList.toggle("expanded", isExpanded);
+    document.body.setAttribute("data-expanded", isExpanded ? "true" : "false");
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.set_expanded(isExpanded, settings.orientation);
+    }
   }
 
   window.applySettings = function (newSettings) {
@@ -184,7 +195,14 @@ document.addEventListener("DOMContentLoaded", () => {
       existing.set(el.getAttribute("data-session-key"), el);
     });
 
-    sessions.forEach((s) => {
+    // Only the top MAX_VISIBLE_ORBS lights render inline (sessions arrives
+    // pre-sorted by priority/recency from the server, so this keeps the
+    // most relevant ones visible); the rest collapse into a "+N" badge that
+    // expands the panel to show every session via renderSessionList.
+    const visibleSessions = sessions.slice(0, MAX_VISIBLE_ORBS);
+    const overflowCount = sessions.length - visibleSessions.length;
+
+    visibleSessions.forEach((s) => {
       let orb = existing.get(s.id);
 
       if (!orb) {
@@ -233,7 +251,35 @@ document.addEventListener("DOMContentLoaded", () => {
       orbCluster.appendChild(orb); // moves into place if already present — no recreation
     });
 
-    // Anything left in `existing` belongs to a session that's gone now.
+    if (overflowCount > 0) {
+      let badge = existing.get("__overflow__");
+
+      if (!badge) {
+        badge = document.createElement("div");
+        badge.className = "orb-item orb-overflow";
+        badge.setAttribute("data-session-key", "__overflow__");
+        badge.innerHTML = `
+          <div class="orb-overflow-count"></div>
+          <div class="orb-tooltip"></div>
+        `;
+
+        badge.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (!isExpanded) setExpanded(true);
+        });
+      } else {
+        existing.delete("__overflow__");
+      }
+
+      badge.querySelector(".orb-overflow-count").textContent = `+${overflowCount}`;
+      badge.querySelector(".orb-tooltip").textContent =
+        `${overflowCount} more session${overflowCount > 1 ? "s" : ""} · Click to expand`;
+
+      orbCluster.appendChild(badge);
+    }
+
+    // Anything left in `existing` belongs to a session (or the overflow
+    // badge) that's gone now.
     existing.forEach((el) => el.remove());
   }
 
@@ -316,12 +362,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Expansion
   expandBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    isExpanded = !isExpanded;
-    container.classList.toggle("expanded", isExpanded);
-    document.body.setAttribute("data-expanded", isExpanded ? "true" : "false");
-    if (window.pywebview && window.pywebview.api) {
-      window.pywebview.api.set_expanded(isExpanded, settings.orientation);
-    }
+    setExpanded(!isExpanded);
   });
 
   // Tab switching
