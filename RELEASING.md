@@ -106,5 +106,6 @@ rebuild of the untouched macOS/Ubuntu artifacts:
   build-release.yml     # builds all 3 platforms and publishes the GitHub Release
 pyproject.toml           # [tool.briefcase] packaging config lives here
 assets/icon/
-  vibe-hud.svg           # source icon; Briefcase generates per-platform icons from it
+  vibe-hud.svg           # source icon; Briefcase generates per-platform icons from it,
+                          # also reused for the macOS/Windows/Linux menu bar tray icon
 ```
