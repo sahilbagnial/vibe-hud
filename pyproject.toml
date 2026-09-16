@@ -44,6 +44,13 @@ author_email = "sahilbagnial@gmail.com"
 [tool.briefcase.app.vibe-hud]
 formal_name = "Vibe HUD"
 description = "Universal ambient status light for AI coding agents"
+long_description = """
+Vibe HUD is a floating, always-on-top desktop overlay for macOS, Windows,
+and Linux that shows real-time status for AI coding agents like Claude
+Code: red while it's working, amber when it needs your input, and green
+when it's done. It plugs into Claude Code's lifecycle hooks over a local
+HTTP server, so it never polls and adds no meaningful overhead.
+"""
 icon = "assets/icon/vibe-hud"
 sources = ["vibe_hud"]
 requires = [
@@ -82,9 +89,15 @@ requires = ["pywin32>=306"]
 requires = []
 
 [tool.briefcase.app.vibe-hud.linux.system.ubuntu]
+# gir1.2-webkit2-4.0 doesn't exist on Ubuntu 24.04 "noble" — it dropped the
+# old libsoup2-based WebKitGTK build entirely, keeping only the libsoup3-based
+# 4.1 one. Confirmed against a real noble container (apt-cache policy shows
+# no candidate for -4.0, only -4.1). pywebview's GTK backend already tries
+# WebKit2 4.1 first and only falls back to 4.0 if it's missing (see
+# webview/platforms/gtk.py), so this needs no application code change.
 system_requires = [
     "libgirepository1.0-dev",
     "gir1.2-gtk-3.0",
-    "gir1.2-webkit2-4.0",
+    "gir1.2-webkit2-4.1",
     "libcairo2-dev",
 ]

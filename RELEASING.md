@@ -10,6 +10,14 @@ Packaging is done with [Briefcase](https://briefcase.readthedocs.io/),
 which builds a macOS `.dmg`, a Windows `.msi`, and an Ubuntu `.deb` from
 the same `pyproject.toml`.
 
+> **Ubuntu is temporarily disabled** in the Build & Release workflow (see
+> the note in `.github/workflows/build-release.yml`'s `FULL_MATRIX`). The
+> `create`/`build`/`package` cycle was fully verified working in a local
+> `ubuntu:24.04` container, but the resulting `.deb`'s runtime dependency
+> closure (does it actually pull in GTK/WebKit/PyGObject on a machine that
+> doesn't already have the build-time packages installed?) hasn't been
+> confirmed yet. Only macOS and Windows currently build via CI.
+
 ---
 
 ## Cutting a normal release

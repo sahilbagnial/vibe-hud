@@ -99,7 +99,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # ubuntu temporarily disabled — see the note in build-release.yml's
+          # FULL_MATRIX for why and how to re-enable.
           gh workflow run build-release.yml \
             --repo "${{ github.repository }}" \
             -f tag="v${{ needs.prepare.outputs.version }}" \
-            -f platforms="macos,windows,ubuntu"
+            -f platforms="macos,windows"

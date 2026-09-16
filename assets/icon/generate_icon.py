@@ -45,7 +45,13 @@ def main():
 
     master = draw_icon(1024)
     master.save(BRIEFCASE_ICON_DIR / "vibe-hud-1024.png")
-    draw_icon(512).save(BRIEFCASE_ICON_DIR / "vibe-hud-512.png")
+    # Briefcase's Linux "system" template wants a full 16/32/64/128/256/512
+    # size set (it looks for assets/icon/vibe-hud-<size>.png per size) —
+    # without these, briefcase create falls back to its own stock icon for
+    # every size that's missing, confirmed via a real `briefcase create
+    # linux system` run that only found the 512px file.
+    for size in (16, 32, 64, 128, 256, 512):
+        draw_icon(size).save(BRIEFCASE_ICON_DIR / f"vibe-hud-{size}.png")
 
     master.save(BRIEFCASE_ICON_DIR / "vibe-hud.ico", sizes=[(16, 16), (32, 32), (48, 48), (256, 256)])
 
