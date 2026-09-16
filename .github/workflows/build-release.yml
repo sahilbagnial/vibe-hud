@@ -94,6 +94,23 @@ jobs:
             exit 1
           fi
 
+      # Briefcase's "linux system" target checks for these apt packages but
+      # doesn't install them itself — it just fails `create` with a
+      # "run: sudo apt install ..." message. Reading the list from
+      # pyproject.toml's own [tool.briefcase.app.vibe-hud.linux.system.ubuntu]
+      # system_requires (rather than hardcoding a second copy here) keeps
+      # there being exactly one place this list is maintained.
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu'
+        run: |
+          mapfile -t PACKAGES < <(python3 -c "
+          import tomllib
+          doc = tomllib.load(open('pyproject.toml', 'rb'))
+          print('\n'.join(doc['tool']['briefcase']['app']['vibe-hud']['linux']['system']['ubuntu']['system_requires']))
+          ")
+          sudo apt-get update
+          sudo apt-get install -y "${PACKAGES[@]}"
+
       - name: Install build tools
         run: |
           poetry env use ${{ matrix.python_cmd }}
