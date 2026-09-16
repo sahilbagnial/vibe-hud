@@ -37,10 +37,18 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+          # python_cmd differs for ubuntu: Briefcase's "linux system" target
+          # builds a .deb against system packages rather than bundling its
+          # own Python (unlike macOS/Windows), so it requires the exact
+          # interpreter running Briefcase to BE the distro's own system
+          # python3 — a separately-installed actions/setup-python build,
+          # even at the "same" X.Y version, is a different patch build and
+          # fails Briefcase's own version-identity check. macOS/Windows have
+          # no such constraint and use actions/setup-python's "python".
           FULL_MATRIX='[
-            {"os":"macos-latest","platform":"macos","target":"macOS app","adhoc_sign":true,"asset_glob":"dist/*.dmg"},
-            {"os":"windows-latest","platform":"windows","target":"windows app","adhoc_sign":false,"asset_glob":"dist/*.msi"},
-            {"os":"ubuntu-latest","platform":"ubuntu","target":"linux system","adhoc_sign":false,"asset_glob":"dist/*.deb"}
+            {"os":"macos-latest","platform":"macos","target":"macOS app","adhoc_sign":true,"asset_glob":"dist/*.dmg","python_cmd":"python"},
+            {"os":"windows-latest","platform":"windows","target":"windows app","adhoc_sign":false,"asset_glob":"dist/*.msi","python_cmd":"python"},
+            {"os":"ubuntu-latest","platform":"ubuntu","target":"linux system","adhoc_sign":false,"asset_glob":"dist/*.deb","python_cmd":"python3"}
           ]'
           FILTERED=$(echo "$FULL_MATRIX" | jq -c --arg platforms "$PLATFORMS" '
             [.[] | select(.platform as $p | ($platforms | split(",")) | index($p))]
@@ -58,17 +66,27 @@ jobs:
         with:
           ref: ${{ needs.determine-matrix.outputs.tag }}
 
+      # Skipped on ubuntu: Briefcase's "linux system" target needs to run
+      # under the runner's own system python3, not a separately-installed
+      # build — see the note on FULL_MATRIX above.
       - uses: actions/setup-python@v5
+        if: matrix.platform != 'ubuntu'
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Install Poetry
-        run: pip install poetry
+        # pipx (not `pip install`/`python -m pip install`) specifically for
+        # the ubuntu leg: Ubuntu's system python3 is PEP 668
+        # "externally managed", so a bare pip install would fail with
+        # externally-managed-environment. pipx always installs into its own
+        # isolated venv regardless, so it works the same way on all three
+        # platforms.
+        run: pipx install poetry
 
       - name: Verify tag matches committed version
         shell: bash
         run: |
-          COMMITTED_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['tool']['briefcase']['version'])")
+          COMMITTED_VERSION=$(${{ matrix.python_cmd }} -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['tool']['briefcase']['version'])")
           TAG_VERSION="${{ needs.determine-matrix.outputs.tag }}"
           TAG_VERSION="${TAG_VERSION#v}"
           if [ "$COMMITTED_VERSION" != "$TAG_VERSION" ]; then
@@ -77,7 +95,9 @@ jobs:
           fi
 
       - name: Install build tools
-        run: poetry install --only dev --no-root
+        run: |
+          poetry env use ${{ matrix.python_cmd }}
+          poetry install --only dev --no-root
 
       - name: Build and package
         shell: bash
