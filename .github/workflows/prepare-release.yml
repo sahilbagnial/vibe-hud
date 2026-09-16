@@ -11,6 +11,12 @@ on:
 
 permissions:
   contents: write
+  # Needed to explicitly trigger build-release.yml below — a push made with
+  # the default GITHUB_TOKEN does not start other workflows on its own
+  # (GitHub Actions security restriction), so this workflow has to dispatch
+  # it directly instead of relying on build-release.yml's own tag-push
+  # trigger to fire.
+  actions: write
 
 jobs:
   prepare:
@@ -39,8 +45,8 @@ jobs:
 
       - name: Sync [tool.briefcase] version to match
         run: |
-          pip install tomlkit
-          python3 -c "
+          poetry install --only dev --no-root
+          poetry run python3 -c "
           import tomlkit
           with open('pyproject.toml') as f:
               doc = tomlkit.load(f)
@@ -49,14 +55,33 @@ jobs:
               tomlkit.dump(doc, f)
           "
 
-      - name: Create or reuse release branch
+      - name: Create release branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           BRANCH="release/${{ steps.bump.outputs.minor_line }}"
+          # This workflow only cuts NEW release lines from main. If the
+          # branch already exists, resetting it to main (the old behavior)
+          # would silently discard any hotfix commits already on it, and
+          # even without a hotfix, pushing a non-force update would just be
+          # rejected as non-fast-forward — either way, continuing an
+          # existing release line is not something to do automatically.
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1; then
+            echo "::error::Branch $BRANCH already exists on origin. Prepare Release only cuts new release lines from main — to add a patch release to an existing line, follow the manual 'Hotfixing an old release' steps in RELEASING.md instead."
+            exit 1
+          fi
           git checkout -B "$BRANCH"
           git add pyproject.toml poetry.lock
           git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
           git tag "v${{ steps.bump.outputs.version }}"
           git push origin "$BRANCH"
           git push origin "v${{ steps.bump.outputs.version }}"
+
+      - name: Trigger Build & Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run build-release.yml \
+            --repo "${{ github.repository }}" \
+            -f tag="v${{ steps.bump.outputs.version }}" \
+            -f platforms="macos,windows,ubuntu"

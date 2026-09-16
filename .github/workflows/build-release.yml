@@ -17,7 +17,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   determine-matrix:
@@ -76,18 +76,18 @@ jobs:
             exit 1
           fi
 
-      - name: Install Briefcase
-        run: pip install briefcase
+      - name: Install build tools
+        run: poetry install --only dev --no-root
 
       - name: Build and package
         shell: bash
         run: |
-          briefcase create ${{ matrix.target }}
-          briefcase build ${{ matrix.target }}
+          poetry run briefcase create ${{ matrix.target }}
+          poetry run briefcase build ${{ matrix.target }}
           if [ "${{ matrix.adhoc_sign }}" = "true" ]; then
-            briefcase package ${{ matrix.target }} --adhoc-sign
+            poetry run briefcase package ${{ matrix.target }} --adhoc-sign
           else
-            briefcase package ${{ matrix.target }}
+            poetry run briefcase package ${{ matrix.target }}
           fi
 
       - uses: actions/upload-artifact@v4
@@ -97,6 +97,8 @@ jobs:
 
   release:
     needs: [determine-matrix, build]
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

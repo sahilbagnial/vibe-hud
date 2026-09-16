@@ -23,6 +23,7 @@ vibe-hud-hook = "vibe_hud.cli:hook"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
 briefcase = "^0.3.20"
+tomlkit = "^0.13.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
