@@ -6,7 +6,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_briefcase_icon_files_exist_and_are_valid_images():
-    for name in ("vibe-hud-1024.png", "vibe-hud-512.png"):
+    # .icns is excluded here since it's macOS-only (built via iconutil) and
+    # is covered separately by Briefcase's macOS-only consumer in Task 5.
+    # .ico is NOT platform-gated (produced unconditionally by generate_icon.py
+    # on every OS), so it belongs in this regression check.
+    for name in ("vibe-hud-1024.png", "vibe-hud-512.png", "vibe-hud.ico"):
         path = REPO_ROOT / "assets" / "icon" / name
         assert path.exists(), f"missing {path}"
         with Image.open(path) as img:
