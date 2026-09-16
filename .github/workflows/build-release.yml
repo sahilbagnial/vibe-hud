@@ -72,10 +72,16 @@ jobs:
       - uses: actions/setup-python@v5
         if: matrix.platform != 'ubuntu'
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Install Poetry
-        run: ${{ matrix.python_cmd }} -m pip install poetry
+        # pipx (not `pip install`/`python -m pip install`) specifically for
+        # the ubuntu leg: Ubuntu's system python3 is PEP 668
+        # "externally managed", so a bare pip install would fail with
+        # externally-managed-environment. pipx always installs into its own
+        # isolated venv regardless, so it works the same way on all three
+        # platforms.
+        run: pipx install poetry
 
       - name: Verify tag matches committed version
         shell: bash
@@ -89,17 +95,19 @@ jobs:
           fi
 
       - name: Install build tools
-        run: ${{ matrix.python_cmd }} -m poetry install --only dev --no-root
+        run: |
+          poetry env use ${{ matrix.python_cmd }}
+          poetry install --only dev --no-root
 
       - name: Build and package
         shell: bash
         run: |
-          ${{ matrix.python_cmd }} -m poetry run briefcase create ${{ matrix.target }}
-          ${{ matrix.python_cmd }} -m poetry run briefcase build ${{ matrix.target }}
+          poetry run briefcase create ${{ matrix.target }}
+          poetry run briefcase build ${{ matrix.target }}
           if [ "${{ matrix.adhoc_sign }}" = "true" ]; then
-            ${{ matrix.python_cmd }} -m poetry run briefcase package ${{ matrix.target }} --adhoc-sign
+            poetry run briefcase package ${{ matrix.target }} --adhoc-sign
           else
-            ${{ matrix.python_cmd }} -m poetry run briefcase package ${{ matrix.target }}
+            poetry run briefcase package ${{ matrix.target }}
           fi
 
       - uses: actions/upload-artifact@v4
