@@ -17,7 +17,7 @@
 
 **Vibe HUD** is a floating, always-on-top glassmorphic overlay for macOS, Windows, and Linux that gives you **instant, glanceable feedback** about what your AI coding agent is doing — without switching windows, tabbing back to the terminal, or breaking your flow.
 
-macOS has full support, including a menu bar tray icon. Windows and Linux have the core status HUD and click-to-jump for IDE-integrated terminals (VS Code, Cursor, Windsurf, JetBrains, ...) with best-effort focus fallback for plain terminal apps — no tray icon on those platforms yet.
+All three platforms now have a menu bar/system tray icon (Show/Center/Quit), plus click-to-jump for IDE-integrated terminals (VS Code, Cursor, Windsurf, JetBrains, ...) with best-effort focus fallback for plain terminal apps.
 
 - 🔴 **Agent is working** → Red pulsing light + elapsed timer
 - 🟢 **Agent finished** → Green flash + audio chime  
@@ -54,6 +54,8 @@ git clone https://github.com/sahilbagnial/vibe-hud.git
 cd vibe-hud
 poetry install
 ```
+
+Prebuilt installers (macOS `.dmg`, Windows `.msi`, Ubuntu `.deb`) are published on the [Releases page](https://github.com/sahilbagnial/vibe-hud/releases) — see `RELEASING.md` for how these are built.
 
 ### 2. Launch Vibe HUD
 
@@ -122,7 +124,7 @@ vibe-hud hook (reads stdin JSON)
 
 Ideas being considered for the next round of work — PRs against any of these are very welcome:
 
-- **Windows/Linux tray icon + native alerts**: macOS has a menu-bar icon (show/hide/quit) already; Windows/Linux need the same, plus a native OS notification when a session needs attention or finishes, so you're alerted even when the HUD is hidden behind another window.
+- **Native OS notifications**: all three platforms have a tray icon now; next is a native OS notification when a session needs attention or finishes, so you're alerted even when the HUD is hidden behind another window.
 - **Multi-agent adapters**: generalize the hook payload/CLI so Cursor, Aider, Codex, or OpenCode can push events too, so this stops being Claude-only and becomes the "universal" agent HUD the name promises.
 - **Deeper Windows/Linux window pinning**: macOS pins the HUD across all desktop Spaces; Windows virtual desktops and Linux window managers don't have an equivalent yet, so the HUD only stays on top of the current desktop/workspace there.
 - **Session history + stale detection**: a History tab showing past turns per repo, and a visual flag when a session has been "working" with no event for an unusually long time (crashed hook, closed terminal, etc.).
