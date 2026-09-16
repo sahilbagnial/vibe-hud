@@ -1,0 +1,117 @@
+# .github/workflows/build-release.yml
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build/patch (e.g. v0.3.0)"
+        required: true
+        type: string
+      platforms:
+        description: "Comma-separated: macos,windows,ubuntu (default: all)"
+        required: false
+        default: "macos,windows,ubuntu"
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  determine-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      platforms: ${{ steps.set.outputs.platforms }}
+      tag: ${{ steps.set.outputs.tag }}
+    steps:
+      - id: set
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "platforms=${{ inputs.platforms }}" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "platforms=macos,windows,ubuntu" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: determine-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+            target: "macOS app --adhoc-sign"
+            asset_glob: "dist/*.dmg"
+          - os: windows-latest
+            platform: windows
+            target: "windows app"
+            asset_glob: "dist/*.msi"
+          - os: ubuntu-latest
+            platform: ubuntu
+            target: "linux system"
+            asset_glob: "dist/*.deb"
+    runs-on: ${{ matrix.os }}
+    if: contains(needs.determine-matrix.outputs.platforms, matrix.platform)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.determine-matrix.outputs.tag }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Verify tag matches committed version
+        shell: bash
+        run: |
+          poetry install --only main --no-root
+          COMMITTED_VERSION=$(poetry version --short)
+          TAG_VERSION="${{ needs.determine-matrix.outputs.tag }}"
+          TAG_VERSION="${TAG_VERSION#v}"
+          if [ "$COMMITTED_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag ${{ needs.determine-matrix.outputs.tag }} does not match pyproject.toml version $COMMITTED_VERSION"
+            exit 1
+          fi
+
+      - name: Install Briefcase
+        run: pip install briefcase
+
+      - name: Build and package
+        shell: bash
+        run: |
+          briefcase create ${{ matrix.target }}
+          briefcase build ${{ matrix.target }}
+          briefcase package ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vibe-hud-${{ matrix.platform }}
+          path: ${{ matrix.asset_glob }}
+
+  release:
+    needs: [determine-matrix, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.determine-matrix.outputs.tag }}"
+          FILES=$(find artifacts -type f)
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" $FILES --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "$TAG" $FILES --repo "${{ github.repository }}" --generate-notes
+          fi
