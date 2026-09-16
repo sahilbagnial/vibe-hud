@@ -114,11 +114,14 @@ def setup_pystray_tray(app, icon_path: str) -> None:
     """Shared Windows/Linux tray setup: loads the icon image and runs a
     pystray.Icon with the standard Show/Center/Quit menu in a background
     thread, so it never blocks pywebview's own main loop."""
-    import threading
+    try:
+        import threading
 
-    import pystray
-    from PIL import Image
+        import pystray
+        from PIL import Image
 
-    image = Image.open(icon_path)
-    icon = pystray.Icon("vibe-hud", image, "Vibe HUD", menu=build_tray_menu(app))
-    threading.Thread(target=icon.run, daemon=True).start()
+        image = Image.open(icon_path)
+        icon = pystray.Icon("vibe-hud", image, "Vibe HUD", menu=build_tray_menu(app))
+        threading.Thread(target=icon.run, daemon=True).start()
+    except Exception as e:
+        print(f"[vibe-hud] Warning setting up tray: {e}")
