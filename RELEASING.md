@@ -19,7 +19,10 @@ the same `pyproject.toml`.
    version (e.g. `0.3.0`).
 3. This workflow:
    - Creates (or reuses) a `release/X.Y` branch off `main`.
-   - Runs `poetry version` to bump `pyproject.toml`.
+   - Runs `poetry version` to bump `[project].version` in `pyproject.toml`,
+     then syncs `[tool.briefcase].version` to match — Briefcase reads its
+     own version from `[tool.briefcase]`, not `[project]`, so the two
+     fields have to be kept in lockstep.
    - Commits that bump (`chore: bump version to X.Y.Z`).
    - Tags the commit `vX.Y.Z` and pushes the branch + tag.
 4. The tag push automatically triggers **Build & Release**, which:
@@ -104,8 +107,15 @@ rebuild of the untouched macOS/Ubuntu artifacts:
 .github/workflows/
   prepare-release.yml   # cuts a release: branch + version bump + tag
   build-release.yml     # builds all 3 platforms and publishes the GitHub Release
-pyproject.toml           # [tool.briefcase] packaging config lives here
+pyproject.toml          # [tool.briefcase] packaging config lives here
 assets/icon/
-  vibe-hud.svg           # source icon; Briefcase generates per-platform icons from it,
-                          # also reused for the macOS/Windows/Linux menu bar tray icon
+  generate_icon.py      # Pillow script that draws the icon and renders every
+                         # file below from it — there's no source .svg
+  vibe-hud-1024.png      # rendered artwork, largest size
+  vibe-hud-512.png       # rendered artwork, smaller size
+  vibe-hud.icns          # macOS app icon (built via iconutil, macOS-only)
+  vibe-hud.ico           # Windows app icon
+vibe_hud/assets/
+  tray-icon-32.png       # packaged with the app; used at runtime for the
+  tray-icon-64.png       # macOS/Windows/Linux menu bar tray icon
 ```
