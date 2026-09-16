@@ -93,3 +93,35 @@ def walk_ancestor_processes(max_depth: int = 12):
             break
         curr = parent
     return chain
+
+
+def build_tray_menu(app):
+    """Pure factory for the tray menu shared by pystray-based backends
+    (Windows/Linux). macOS doesn't use this — its NSStatusBar/NSMenu
+    implementation predates this helper and already works, so it's left
+    alone rather than migrated for the sake of one shared code path."""
+    import pystray
+
+    return pystray.Menu(
+        pystray.MenuItem("Show / Bring to Front", lambda icon, item: app.bring_to_front()),
+        pystray.MenuItem("Center on Screen", lambda icon, item: app.center_window()),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Quit Vibe HUD", lambda icon, item: app.quit_app()),
+    )
+
+
+def setup_pystray_tray(app, icon_path: str) -> None:
+    """Shared Windows/Linux tray setup: loads the icon image and runs a
+    pystray.Icon with the standard Show/Center/Quit menu in a background
+    thread, so it never blocks pywebview's own main loop."""
+    try:
+        import threading
+
+        import pystray
+        from PIL import Image
+
+        image = Image.open(icon_path)
+        icon = pystray.Icon("vibe-hud", image, "Vibe HUD", menu=build_tray_menu(app))
+        threading.Thread(target=icon.run, daemon=True).start()
+    except Exception as e:
+        print(f"[vibe-hud] Warning setting up tray: {e}")

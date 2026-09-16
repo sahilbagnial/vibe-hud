@@ -11,6 +11,8 @@ requires-python = ">=3.10"
 dependencies = [
     "pywebview (>=6.2.1,<7.0.0)",
     "psutil (>=6.0.0,<7.0.0)",
+    "pystray (>=0.19.5,<1.0.0)",
+    "Pillow (>=10.4.0,<11.0.0)",
     "pywin32 (>=306) ; sys_platform == 'win32'"
 ]
 
@@ -20,6 +22,8 @@ vibe-hud-hook = "vibe_hud.cli:hook"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
+briefcase = "^0.3.20"
+tomlkit = "^0.13.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -27,3 +31,60 @@ testpaths = ["tests"]
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.briefcase]
+project_name = "Vibe HUD"
+bundle = "com.sahilbagnial"
+version = "0.1.0"
+url = "https://github.com/sahilbagnial/vibe-hud"
+license.file = "LICENSE"
+author = "sahilbagnial"
+author_email = "sahilbagnial@gmail.com"
+
+[tool.briefcase.app.vibe-hud]
+formal_name = "Vibe HUD"
+description = "Universal ambient status light for AI coding agents"
+icon = "assets/icon/vibe-hud"
+sources = ["vibe_hud"]
+requires = [
+    "pywebview>=6.2.1,<7.0.0",
+    "psutil>=6.0.0,<7.0.0",
+    "pystray>=0.19.5,<1.0.0",
+    "Pillow>=10.4.0,<11.0.0",
+]
+# pywebview unconditionally depends on `proxy_tools`, which PyPI only ever
+# published as an sdist (no wheel, any version). Briefcase's `create`/`build`
+# hard-refuses to build sdists when installing app requirements (it forces
+# `--only-binary :all:`, by design, for provenance/reproducibility reasons —
+# see briefcase/platforms/macOS/__init__.py). We vendor a locally-built
+# `py3-none-any` wheel for proxy_tools under vendor-wheels/ and point pip at
+# it via --find-links so it satisfies pywebview's transitive requirement as
+# an already-built wheel. Rebuild it with:
+#   pip wheel proxy_tools --no-deps -w vendor-wheels/
+requirement_installer_args = ["--find-links", "./vendor-wheels"]
+
+# No [tool.briefcase.app.vibe-hud.macOS] section: Briefcase's own template
+# suggests adding `std-nslog` here to redirect stdout/stderr into Console.app
+# via os_log. In practice, on this Briefcase version, std-nslog's compiled
+# `_oslog_shim` extension fails to import at app startup (ModuleNotFoundError,
+# despite the .so being present and correctly signed), and Briefcase's
+# GUI-Stub launcher treats the resulting traceback on stderr as a fatal crash,
+# popping a blocking "Application has crashed" modal on every launch before
+# our own window/server ever starts. std-nslog is purely a stdout/stderr
+# logging convenience, not required for functionality, so we omit it rather
+# than chase the underlying import bug. Do not re-add `std-nslog` here without
+# re-verifying a real launch first.
+
+[tool.briefcase.app.vibe-hud.windows]
+requires = ["pywin32>=306"]
+
+[tool.briefcase.app.vibe-hud.linux]
+requires = []
+
+[tool.briefcase.app.vibe-hud.linux.system.ubuntu]
+system_requires = [
+    "libgirepository1.0-dev",
+    "gir1.2-gtk-3.0",
+    "gir1.2-webkit2-4.0",
+    "libcairo2-dev",
+]

@@ -1,0 +1,118 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build/patch (e.g. v0.3.0)"
+        required: true
+        type: string
+      platforms:
+        description: "Comma-separated: macos,windows,ubuntu (default: all)"
+        required: false
+        default: "macos,windows,ubuntu"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  determine-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+      tag: ${{ steps.set.outputs.tag }}
+    steps:
+      - id: set
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PLATFORMS="${{ inputs.platforms }}"
+            TAG="${{ inputs.tag }}"
+          else
+            PLATFORMS="macos,windows,ubuntu"
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          FULL_MATRIX='[
+            {"os":"macos-latest","platform":"macos","target":"macOS app","adhoc_sign":true,"asset_glob":"dist/*.dmg"},
+            {"os":"windows-latest","platform":"windows","target":"windows app","adhoc_sign":false,"asset_glob":"dist/*.msi"},
+            {"os":"ubuntu-latest","platform":"ubuntu","target":"linux system","adhoc_sign":false,"asset_glob":"dist/*.deb"}
+          ]'
+          FILTERED=$(echo "$FULL_MATRIX" | jq -c --arg platforms "$PLATFORMS" '
+            [.[] | select(.platform as $p | ($platforms | split(",")) | index($p))]
+          ')
+          echo "matrix={\"include\":$FILTERED}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: determine-matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.determine-matrix.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.determine-matrix.outputs.tag }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Verify tag matches committed version
+        shell: bash
+        run: |
+          COMMITTED_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['tool']['briefcase']['version'])")
+          TAG_VERSION="${{ needs.determine-matrix.outputs.tag }}"
+          TAG_VERSION="${TAG_VERSION#v}"
+          if [ "$COMMITTED_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag ${{ needs.determine-matrix.outputs.tag }} does not match [tool.briefcase].version $COMMITTED_VERSION"
+            exit 1
+          fi
+
+      - name: Install build tools
+        run: poetry install --only dev --no-root
+
+      - name: Build and package
+        shell: bash
+        run: |
+          poetry run briefcase create ${{ matrix.target }}
+          poetry run briefcase build ${{ matrix.target }}
+          if [ "${{ matrix.adhoc_sign }}" = "true" ]; then
+            poetry run briefcase package ${{ matrix.target }} --adhoc-sign
+          else
+            poetry run briefcase package ${{ matrix.target }}
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vibe-hud-${{ matrix.platform }}
+          path: ${{ matrix.asset_glob }}
+
+  release:
+    needs: [determine-matrix, build]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.determine-matrix.outputs.tag }}"
+          mapfile -t FILES < <(find artifacts -type f)
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${FILES[@]}" --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "$TAG" "${FILES[@]}" --repo "${{ github.repository }}" --generate-notes
+          fi

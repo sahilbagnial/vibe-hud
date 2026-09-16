@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 from vibe_hud.platform.base import PlatformBackend, jump_via_ide_cli, walk_ancestor_processes
 
@@ -65,7 +66,12 @@ class LinuxBackend(PlatformBackend):
             print(f"[vibe-hud] Warning bringing window to front: {e}")
 
     def setup_tray(self, app) -> None:
-        pass  # no tray on Linux in this pass
+        try:
+            from vibe_hud.platform import base
+            icon_path = str(Path(__file__).resolve().parent.parent / "assets" / "tray-icon-32.png")
+            base.setup_pystray_tray(app, icon_path)
+        except Exception as e:
+            print(f"[vibe-hud] Warning setting up tray: {e}")
 
     def detect_terminal_info(self) -> dict:
         env = os.environ

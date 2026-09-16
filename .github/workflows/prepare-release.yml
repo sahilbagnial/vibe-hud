@@ -1,0 +1,105 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type, or an explicit version (e.g. 0.3.0)"
+        required: true
+        default: "patch"
+        type: string
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    # Only contents: write here — this job never needs to touch the Actions
+    # API. Keeping actions: write out of its reach means even a future
+    # mistake that reintroduces unsafe interpolation in one of these steps
+    # can't be used to dispatch/cancel/rerun workflows, only to affect repo
+    # contents (which the injection-safe fix below prevents anyway).
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bump version
+        id: bump
+        env:
+          # GitHub substitutes ${{ inputs.bump }} into the script text
+          # *before* the shell parses it — interpolating it directly into
+          # `run:` would let a crafted input (e.g. `patch"; some-command; "`)
+          # break out of the quotes and execute arbitrary commands with this
+          # job's token. Routing it through env: instead means the shell
+          # only ever sees it as one opaque variable value ("$BUMP_INPUT"),
+          # never as script text to parse.
+          BUMP_INPUT: ${{ inputs.bump }}
+        run: |
+          poetry version "$BUMP_INPUT"
+          NEW_VERSION=$(poetry version --short)
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          MINOR_LINE=$(echo "$NEW_VERSION" | cut -d. -f1,2)
+          echo "minor_line=$MINOR_LINE" >> "$GITHUB_OUTPUT"
+
+      - name: Sync [tool.briefcase] version to match
+        run: |
+          poetry install --only dev --no-root
+          poetry run python3 -c "
+          import tomlkit
+          with open('pyproject.toml') as f:
+              doc = tomlkit.load(f)
+          doc['tool']['briefcase']['version'] = '${{ steps.bump.outputs.version }}'
+          with open('pyproject.toml', 'w') as f:
+              tomlkit.dump(doc, f)
+          "
+
+      - name: Create release branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BRANCH="release/${{ steps.bump.outputs.minor_line }}"
+          # This workflow only cuts NEW release lines from main. If the
+          # branch already exists, resetting it to main (the old behavior)
+          # would silently discard any hotfix commits already on it, and
+          # even without a hotfix, pushing a non-force update would just be
+          # rejected as non-fast-forward — either way, continuing an
+          # existing release line is not something to do automatically.
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1; then
+            echo "::error::Branch $BRANCH already exists on origin. Prepare Release only cuts new release lines from main — to add a patch release to an existing line, follow the manual 'Hotfixing an old release' steps in RELEASING.md instead."
+            exit 1
+          fi
+          git checkout -B "$BRANCH"
+          git add pyproject.toml poetry.lock
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
+          git tag "v${{ steps.bump.outputs.version }}"
+          git push origin "$BRANCH"
+          git push origin "v${{ steps.bump.outputs.version }}"
+
+  trigger-build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    # Only actions: write here, and only for this one dispatch call — kept
+    # in its own job, separate from the version-bump/git steps above, so
+    # this permission is never available anywhere near untrusted input.
+    permissions:
+      actions: write
+    steps:
+      - name: Trigger Build & Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run build-release.yml \
+            --repo "${{ github.repository }}" \
+            -f tag="v${{ needs.prepare.outputs.version }}" \
+            -f platforms="macos,windows,ubuntu"

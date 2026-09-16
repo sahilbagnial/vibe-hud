@@ -1,9 +1,12 @@
 import os
 import subprocess
+from pathlib import Path
 
 import psutil
 
 from vibe_hud.platform.base import PlatformBackend, jump_via_ide_cli
+
+TRAY_ICON_PATH = Path(__file__).resolve().parent.parent / "assets" / "tray-icon-32.png"
 
 # TERM_PROGRAM is "vscode" for every VS Code fork (Cursor, Windsurf,
 # Antigravity, ...) and app_name is useless for telling them apart (they all
@@ -120,7 +123,19 @@ class MacOSBackend(PlatformBackend):
             self._status_item = NSStatusBar.systemStatusBar().statusItemWithLength_(
                 NSVariableStatusItemLength
             )
-            self._status_item.button().setTitle_("\U0001F6A6")  # traffic light emoji
+            from AppKit import NSImage
+
+            image = NSImage.alloc().initWithContentsOfFile_(str(TRAY_ICON_PATH))
+            if image:
+                image.setSize_((18, 18))
+                # Not a template image: this icon's color IS the app's identity
+                # (red/amber/green), and its opaque background has no alpha
+                # gradation for template masking to work with anyway — template
+                # mode would just collapse the whole shape into a solid blob.
+                image.setTemplate_(False)
+                self._status_item.button().setImage_(image)
+            else:
+                self._status_item.button().setTitle_("\U0001F6A6")  # fallback if the icon is missing
 
             self._tray_actions = _TrayActions.alloc().init()
             self._tray_actions.app = app

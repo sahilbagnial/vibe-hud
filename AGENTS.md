@@ -11,9 +11,9 @@ project's purpose, conventions, and how an agent should behave when working here
 **Vibe HUD** is a cross-platform (macOS, Windows, Linux) desktop overlay that
 shows real-time status of AI coding agents via a floating glassmorphic pill.
 It is written in Python (pywebview) and uses Claude Code lifecycle hooks to
-receive events. macOS has full support (tray icon included); Windows/Linux
-have the core status HUD and IDE-CLI click-to-focus, with best-effort native
-terminal-focus fallback and no tray icon yet.
+receive events. All three platforms have a tray icon (Show/Center/Quit) and
+IDE-CLI click-to-focus, with best-effort native terminal-focus fallback for
+plain terminal apps.
 
 **Repo:** https://github.com/sahilbagnial/vibe-hud  
 **Language:** Python 3.10+ (package manager: Poetry)  
@@ -139,8 +139,6 @@ The hook posts JSON to `http://127.0.0.1:28790/event`:
 ## Contribution Areas (Good First Issues for Agents)
 
 - Add Aider / Cursor / OpenCode adapter (new CLI subcommand + hook docs)
-- Add a Windows/Linux tray icon (`platform/windows.py` / `platform/linux.py`
-  `setup_tray()` — currently a no-op on both)
 - Add real Windows "always on top across virtual desktops" / Linux
   "sticky window" support (`platform/windows.py` / `platform/linux.py`
   `configure_window()` — currently a no-op on both, unlike macOS's
