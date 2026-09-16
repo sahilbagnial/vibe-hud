@@ -9,18 +9,18 @@ on:
         default: "patch"
         type: string
 
-permissions:
-  contents: write
-  # Needed to explicitly trigger build-release.yml below — a push made with
-  # the default GITHUB_TOKEN does not start other workflows on its own
-  # (GitHub Actions security restriction), so this workflow has to dispatch
-  # it directly instead of relying on build-release.yml's own tag-push
-  # trigger to fire.
-  actions: write
-
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    # Only contents: write here — this job never needs to touch the Actions
+    # API. Keeping actions: write out of its reach means even a future
+    # mistake that reintroduces unsafe interpolation in one of these steps
+    # can't be used to dispatch/cancel/rerun workflows, only to affect repo
+    # contents (which the injection-safe fix below prevents anyway).
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,8 +36,17 @@ jobs:
 
       - name: Bump version
         id: bump
+        env:
+          # GitHub substitutes ${{ inputs.bump }} into the script text
+          # *before* the shell parses it — interpolating it directly into
+          # `run:` would let a crafted input (e.g. `patch"; some-command; "`)
+          # break out of the quotes and execute arbitrary commands with this
+          # job's token. Routing it through env: instead means the shell
+          # only ever sees it as one opaque variable value ("$BUMP_INPUT"),
+          # never as script text to parse.
+          BUMP_INPUT: ${{ inputs.bump }}
         run: |
-          poetry version "${{ inputs.bump }}"
+          poetry version "$BUMP_INPUT"
           NEW_VERSION=$(poetry version --short)
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           MINOR_LINE=$(echo "$NEW_VERSION" | cut -d. -f1,2)
@@ -77,11 +86,20 @@ jobs:
           git push origin "$BRANCH"
           git push origin "v${{ steps.bump.outputs.version }}"
 
+  trigger-build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    # Only actions: write here, and only for this one dispatch call — kept
+    # in its own job, separate from the version-bump/git steps above, so
+    # this permission is never available anywhere near untrusted input.
+    permissions:
+      actions: write
+    steps:
       - name: Trigger Build & Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh workflow run build-release.yml \
             --repo "${{ github.repository }}" \
-            -f tag="v${{ steps.bump.outputs.version }}" \
+            -f tag="v${{ needs.prepare.outputs.version }}" \
             -f platforms="macos,windows,ubuntu"
