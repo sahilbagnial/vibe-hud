@@ -33,3 +33,9 @@ def test_detect_terminal_info_returns_expected_keys():
     info = MacOSBackend().detect_terminal_info()
     for key in ("term_program", "iterm_session", "bundle_id", "terminal_emulator", "app_pid", "app_name"):
         assert key in info
+
+
+def test_tray_icon_path_points_at_bundled_png():
+    from vibe_hud.platform.macos import TRAY_ICON_PATH
+    assert TRAY_ICON_PATH.name == "tray-icon-32.png"
+    assert TRAY_ICON_PATH.exists()
