@@ -1,6 +1,6 @@
 [project]
 name = "vibe-hud"
-version = "0.1.0"
+version = "1.0.0"
 description = "Universal ambient status light for AI coding agents"
 authors = [
     {name = "sahilbagnial", email = "sahilbagnial@gmail.com"}
@@ -35,7 +35,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.briefcase]
 project_name = "Vibe HUD"
 bundle = "com.sahilbagnial"
-version = "0.1.0"
+version = "1.0.0"
 url = "https://github.com/sahilbagnial/vibe-hud"
 license.file = "LICENSE"
 author = "sahilbagnial"
