@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+from unittest.mock import patch
 
 from vibe_hud.platform.base import PlatformBackend, jump_via_ide_cli
 from vibe_hud.platform.windows import WindowsBackend, _find_app_process, _resolve_cli
@@ -73,3 +74,13 @@ def test_jetbrains_terminal_emulator_flows_into_jump_args(monkeypatch, tmp_path)
     session = {**info, "cwd": str(tmp_path), "app_exe_name": "idea64.exe"}
     assert jump_via_ide_cli(session, _resolve_cli) is True
     assert captured["args"] == ["idea", os.path.realpath(str(tmp_path))]
+
+
+def test_setup_tray_calls_shared_pystray_helper_with_package_icon():
+    backend = WindowsBackend()
+    with patch("vibe_hud.platform.base.setup_pystray_tray") as mock_setup:
+        backend.setup_tray("fake-app")
+    mock_setup.assert_called_once()
+    called_app, called_icon_path = mock_setup.call_args[0]
+    assert called_app == "fake-app"
+    assert called_icon_path.endswith("tray-icon-32.png")
